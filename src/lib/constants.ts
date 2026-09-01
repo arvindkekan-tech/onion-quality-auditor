@@ -1,6 +1,9 @@
 export const ROUTES = {
   dashboard: '/',
+  inspections: '/inspections',
   newInspection: '/inspection/new',
+  analytics: '/analytics',
+  profile: '/profile',
   imageCapture: (id: string) => `/inspection/${id}/capture`,
   imageQuality: (id: string) => `/inspection/${id}/quality`,
   aiAnalysis: (id: string) => `/inspection/${id}/analysis`,
@@ -11,13 +14,29 @@ export const ROUTES = {
 } as const
 
 export const INSPECTION_STEPS = [
-  { key: 'new', label: 'New Inspection' },
-  { key: 'capture', label: 'Image Capture' },
-  { key: 'quality', label: 'Quality Check' },
-  { key: 'analysis', label: 'AI Analysis' },
-  { key: 'results', label: 'Results' },
-  { key: 'review', label: 'Human Review' },
-  { key: 'certificate', label: 'Certificate' },
+  { key: 'batch', label: 'Batch', shortLabel: 'Batch' },
+  { key: 'capture', label: 'Capture', shortLabel: 'Capture' },
+  { key: 'quality', label: 'Quality', shortLabel: 'Quality' },
+  { key: 'detect', label: 'Detect', shortLabel: 'Detect' },
+  { key: 'results', label: 'Results', shortLabel: 'Results' },
+  { key: 'review', label: 'Review', shortLabel: 'Review' },
+  { key: 'report', label: 'Report', shortLabel: 'Report' },
 ] as const
 
 export type InspectionStepKey = (typeof INSPECTION_STEPS)[number]['key']
+
+export const NAV_ITEMS = [
+  { key: 'dashboard', label: 'Dashboard', path: ROUTES.dashboard },
+  { key: 'inspections', label: 'Inspections', path: ROUTES.inspections },
+  { key: 'new', label: 'New', path: ROUTES.newInspection, primary: true },
+  { key: 'analytics', label: 'Analytics', path: ROUTES.analytics },
+  { key: 'profile', label: 'Profile', path: ROUTES.profile },
+] as const
+
+export function isInspectionFlowPath(pathname: string) {
+  return (
+    pathname.startsWith('/inspection/') ||
+    pathname.startsWith('/certificate/') ||
+    pathname.startsWith('/verify/')
+  )
+}

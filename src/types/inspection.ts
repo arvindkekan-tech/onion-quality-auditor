@@ -22,6 +22,17 @@ export const imageQualityResultSchema = z.object({
   passed: z.boolean(),
   issues: z.array(z.string()),
   score: z.number().optional(),
+  checks: z
+    .array(
+      z.object({
+        key: z.string(),
+        label: z.string(),
+        score: z.number(),
+        passed: z.boolean(),
+        explanation: z.string(),
+      }),
+    )
+    .optional(),
 })
 
 export type ImageQualityResult = z.infer<typeof imageQualityResultSchema>
@@ -34,10 +45,14 @@ export const inspectionResultSchema = z.object({
     z.object({
       label: z.string(),
       count: z.number(),
+      category: z.enum(['visual', 'lab']).optional(),
     }),
   ),
   summary: z.string(),
   analyzedAt: z.string(),
+  totalOnions: z.number().optional(),
+  modelName: z.string().optional(),
+  classification: z.enum(['grade_a', 'urs', 'rejected']).optional(),
 })
 
 export type InspectionResult = z.infer<typeof inspectionResultSchema>

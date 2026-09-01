@@ -1,3 +1,4 @@
+import { auditTimelineTemplate } from '@/lib/demo-data'
 import type { Certificate, VerificationResult } from '@/types/certificate'
 import { certificateSchema, verificationResultSchema } from '@/types/certificate'
 
@@ -17,11 +18,17 @@ export async function mockGetCertificate(id: string): Promise<Certificate> {
   const certificate: Certificate = {
     id,
     inspectionId: `insp-${id}`,
+    batchId: 'OKB-2024-1847',
     grade: 'Grade A',
     issuedAt: new Date().toISOString(),
-    batchLabel: 'Demo Batch — Nashik Red Onion',
+    batchLabel: 'OKB-2024-1847 — Lasalgaon APMC',
+    procurementCentre: 'Lasalgaon APMC',
+    specification: 'Export Grade — Nashik Red',
+    sampleSize: 48,
+    confidence: 0.91,
+    defectSummary: '2 sprouted, 3 mechanical damage (within tolerance)',
     qrToken: `qr-${id}`,
-    inspectorName: 'Demo Inspector',
+    inspectorName: 'Rajesh Patil',
   }
 
   certificates.set(id, certificate)
@@ -43,17 +50,24 @@ export async function mockVerifyCertificate(
   const certificate: Certificate = {
     id: `cert-${token}`,
     inspectionId: `insp-${token}`,
+    batchId: 'OKB-2024-1847',
     grade: 'Grade A',
     issuedAt: new Date().toISOString(),
-    batchLabel: 'Demo Batch — Nashik Red Onion',
+    batchLabel: 'OKB-2024-1847 — Lasalgaon APMC',
+    procurementCentre: 'Lasalgaon APMC',
+    specification: 'Export Grade — Nashik Red',
+    sampleSize: 48,
+    confidence: 0.91,
+    defectSummary: '2 sprouted, 3 mechanical damage (within tolerance)',
     qrToken: token,
-    inspectorName: 'Demo Inspector',
+    inspectorName: 'Rajesh Patil',
   }
 
   return verificationResultSchema.parse({
     valid: true,
     certificate,
-    message: 'Certificate is valid.',
+    message: 'Certificate is valid and has not been revoked.',
+    auditTimeline: auditTimelineTemplate,
   })
 }
 

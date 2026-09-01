@@ -1,6 +1,5 @@
-import {
-  mockStoreCertificate,
-} from '@/lib/api/mock/certificates.mock'
+import { mockStoreCertificate } from '@/lib/api/mock/certificates.mock'
+import { MODEL_NAME, qualityChecksTemplate } from '@/lib/demo-data'
 import type {
   AnalysisStatusResponse,
   CreateInspectionInput,
@@ -85,6 +84,13 @@ export async function mockCheckImageQuality(
     passed: true,
     issues: [],
     score: 92,
+    checks: qualityChecksTemplate.map((check, index) => ({
+      key: check.key,
+      label: check.label,
+      score: [94, 88, 91, 86][index] ?? 90,
+      passed: index !== 3,
+      explanation: check.explanation,
+    })),
   })
 }
 
@@ -140,11 +146,20 @@ export async function mockGetAnalysisStatus(
     inspectionId,
     grade: 'Grade A',
     confidence: 0.91,
+    classification: 'grade_a',
+    totalOnions: 48,
+    modelName: MODEL_NAME,
     defects: [
-      { label: 'Sprouting', count: 1 },
-      { label: 'Surface damage', count: 2 },
+      { label: 'Sprouted', count: 2, category: 'visual' },
+      { label: 'Mechanical Damage', count: 3, category: 'visual' },
+      { label: 'Undersized', count: 1, category: 'visual' },
+      { label: 'Surface Discoloration', count: 4, category: 'visual' },
+      { label: 'External Rot', count: 0, category: 'visual' },
+      { label: 'Split / Cracked', count: 1, category: 'visual' },
+      { label: 'Oversized', count: 0, category: 'visual' },
     ],
-    summary: 'Batch meets export quality thresholds with minor surface defects.',
+    summary:
+      'Batch meets Grade A procurement thresholds. Minor visible defects within tolerance.',
     analyzedAt: new Date().toISOString(),
   }
   results.set(inspectionId, result)
@@ -179,13 +194,19 @@ export async function mockSubmitReview(
   const certificate: Certificate = {
     id: certificateId,
     inspectionId,
+    batchId: 'OKB-2024-1847',
     grade: input.overrideGrade ?? results.get(inspectionId)?.grade ?? 'Grade A',
     issuedAt: new Date().toISOString(),
     batchLabel: inspection
       ? `${inspection.variety} — ${inspection.location}`
       : 'Inspection batch',
+    procurementCentre: inspection?.location,
+    specification: inspection?.variety,
+    sampleSize: 48,
+    confidence: results.get(inspectionId)?.confidence,
+    defectSummary: 'Reviewed and approved by inspector',
     qrToken: `qr-${certificateId}`,
-    inspectorName: 'Demo Inspector',
+    inspectorName: 'Rajesh Patil',
   }
 
   mockStoreCertificate(certificate)

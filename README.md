@@ -1,11 +1,11 @@
-# PAOQA — Portable AI Onion Quality Auditor
+# ONIVIS — AI-Assisted Onion Quality Inspection
 
 Frontend for the SIH 2026 onion quality inspection demo journey.
 
 ## Stack
 
 - React + Vite + TypeScript
-- Tailwind CSS + shadcn/ui
+- Tailwind CSS v4 + shadcn/ui
 - React Router
 - TanStack Query
 - Zustand (capture draft state only)
@@ -27,10 +27,16 @@ npm run dev
 
 Set `VITE_USE_MOCK_API=false` when the backend is ready. Page components do not need to change.
 
-## Milestone 1 routes
+## Routes
 
+### Main navigation
 - `/` — Dashboard
+- `/inspections` — Inspection history
 - `/inspection/new` — New Inspection
+- `/analytics` — Analytics
+- `/profile` — Profile & settings
+
+### Inspection journey
 - `/inspection/:id/capture` — Image Capture
 - `/inspection/:id/quality` — Image Quality Check
 - `/inspection/:id/analysis` — AI Analysis (polls backend)
@@ -42,5 +48,6 @@ Set `VITE_USE_MOCK_API=false` when the backend is ready. Page components do not 
 ## Project structure
 
 - `src/features/` — one folder per screen
+- `src/components/shared/` — reusable UI components
 - `src/lib/api/` — HTTP client + mock/real API functions
-- `src/features/*/hooks.ts` — TanStack Query hooks (pages call hooks, not `fetch`)
+- `src/lib/demo-data.ts` — demo metrics and sample data
