@@ -1,0 +1,71 @@
+import { z } from 'zod'
+
+import { ApiError } from '@/types/api'
+import { apiBaseUrl } from './config'
+
+type RequestOptions = Omit<RequestInit, 'body'> & {
+  body?: unknown
+}
+
+async function parseResponse<T>(
+  response: Response,
+  schema?: z.ZodType<T>,
+): Promise<T> {
+  const contentType = response.headers.get('content-type')
+  const isJson = contentType?.includes('application/json')
+  const data = isJson ? await response.json() : await response.text()
+
+  if (!response.ok) {
+    const message =
+      typeof data === 'object' && data && 'message' in data
+        ? String((data as { message: string }).message)
+        : `Request failed with status ${response.status}`
+    const code =
+      typeof data === 'object' && data && 'code' in data
+        ? String((data as { code: string }).code)
+        : undefined
+    throw new ApiError(message, response.status, code)
+  }
+
+  if (schema) {
+    return schema.parse(data)
+  }
+
+  return data as T
+}
+
+async function request<T>(
+  path: string,
+  options: RequestOptions = {},
+  schema?: z.ZodType<T>,
+): Promise<T> {
+  const { body, headers, ...rest } = options
+
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    ...rest,
+    headers: {
+      ...(body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
+      ...headers,
+    },
+    body:
+      body instanceof FormData
+        ? body
+        : body !== undefined
+          ? JSON.stringify(body)
+          : undefined,
+  })
+
+  return parseResponse(response, schema)
+}
+
+export const apiClient = {
+  get<T>(path: string, schema?: z.ZodType<T>) {
+    return request<T>(path, { method: 'GET' }, schema)
+  },
+  post<T>(path: string, body?: unknown, schema?: z.ZodType<T>) {
+    return request<T>(path, { method: 'POST', body }, schema)
+  },
+  patch<T>(path: string, body?: unknown, schema?: z.ZodType<T>) {
+    return request<T>(path, { method: 'PATCH', body }, schema)
+  },
+}

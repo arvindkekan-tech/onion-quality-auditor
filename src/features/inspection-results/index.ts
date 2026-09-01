@@ -1,0 +1,1 @@
+export { InspectionResultsPage } from './InspectionResultsPage'

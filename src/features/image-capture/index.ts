@@ -1,0 +1,1 @@
+export { ImageCapturePage } from './ImageCapturePage'

@@ -1,0 +1,1 @@
+export { QrVerificationPage } from './QrVerificationPage'

@@ -1,0 +1,1 @@
+export { QualityCertificatePage } from './QualityCertificatePage'
