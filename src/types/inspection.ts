@@ -11,7 +11,7 @@ export type AnalysisStatus = z.infer<typeof analysisStatusSchema>
 
 export const inspectionImageSchema = z.object({
   id: z.string(),
-  url: z.string().optional(),
+  url: z.string().nullable().optional(),
   uploadedAt: z.string(),
 })
 
@@ -21,7 +21,7 @@ export const imageQualityResultSchema = z.object({
   imageId: z.string(),
   passed: z.boolean(),
   issues: z.array(z.string()),
-  score: z.number().optional(),
+  score: z.number().nullable().optional(),
   checks: z
     .array(
       z.object({
@@ -32,6 +32,7 @@ export const imageQualityResultSchema = z.object({
         explanation: z.string(),
       }),
     )
+    .nullable()
     .optional(),
 })
 
@@ -50,9 +51,9 @@ export const inspectionResultSchema = z.object({
   ),
   summary: z.string(),
   analyzedAt: z.string(),
-  totalOnions: z.number().optional(),
-  modelName: z.string().optional(),
-  classification: z.enum(['grade_a', 'urs', 'rejected']).optional(),
+  totalOnions: z.number().nullable().optional(),
+  modelName: z.string().nullable().optional(),
+  classification: z.enum(['grade_a', 'urs', 'rejected']).nullable().optional(),
 })
 
 export type InspectionResult = z.infer<typeof inspectionResultSchema>
@@ -79,8 +80,8 @@ export type CreateInspectionInput = z.infer<typeof createInspectionInputSchema>
 export const analysisStatusResponseSchema = z.object({
   inspectionId: z.string(),
   status: analysisStatusSchema,
-  progress: z.number().min(0).max(100).optional(),
-  message: z.string().optional(),
+  progress: z.number().min(0).max(100).nullable().optional(),
+  message: z.string().nullable().optional(),
 })
 
 export type AnalysisStatusResponse = z.infer<
@@ -89,8 +90,8 @@ export type AnalysisStatusResponse = z.infer<
 
 export const reviewInputSchema = z.object({
   approved: z.boolean(),
-  notes: z.string().optional(),
-  overrideGrade: z.string().optional(),
+  notes: z.string().nullable().optional(),
+  overrideGrade: z.string().nullable().optional(),
 })
 
 export type ReviewInput = z.infer<typeof reviewInputSchema>
@@ -99,7 +100,7 @@ export const reviewResponseSchema = z.object({
   inspectionId: z.string(),
   certificateId: z.string(),
   approved: z.boolean(),
-  notes: z.string().optional(),
+  notes: z.string().nullable().optional(),
 })
 
 export type ReviewResponse = z.infer<typeof reviewResponseSchema>
