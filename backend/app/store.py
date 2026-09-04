@@ -187,6 +187,16 @@ def get_inspection(inspection_id: str) -> StoredInspection | None:
     return _inspection_from_row(row) if row else None
 
 
+def list_inspections() -> list[StoredInspection]:
+    response = _execute(
+        _client()
+        .table("inspections")
+        .select("*")
+        .order("created_at", desc=True)
+    )
+    return [_inspection_from_row(row) for row in response.data or []]
+
+
 def get_image(inspection_id: str, image_id: str) -> StoredImage | None:
     response = _execute(
         _client()

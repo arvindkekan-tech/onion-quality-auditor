@@ -24,6 +24,7 @@ class FakeQuery:
         self.filters: list[tuple[str, Any]] = []
         self.max_rows: int | None = None
         self.order_column: str | None = None
+        self.order_desc = False
 
     def select(self, _columns: str) -> "FakeQuery":
         self.operation = "select"
@@ -56,7 +57,8 @@ class FakeQuery:
         self.max_rows = count
         return self
 
-    def order(self, column: str) -> "FakeQuery":
+    def order(self, column: str, desc: bool = False) -> "FakeQuery":
+        self.order_desc = desc
         self.order_column = column
         return self
 
@@ -70,7 +72,10 @@ class FakeQuery:
 
         if self.operation == "select":
             if self.order_column:
-                matches.sort(key=lambda row: row[self.order_column])
+                matches.sort(
+                    key=lambda row: row[self.order_column],
+                    reverse=self.order_desc,
+                )
             if self.max_rows is not None:
                 matches = matches[: self.max_rows]
             return FakeResponse([dict(row) for row in matches])
@@ -281,6 +286,61 @@ def test_analysis_status_uses_same_persisted_inspection_id() -> None:
     assert status.status_code == 200, status.text
     assert status.json()["inspectionId"] == inspection_id
     assert status.json()["status"] in {"pending", "processing", "completed"}
+
+
+def test_inspection_history_is_newest_first_and_maps_analysis() -> None:
+    older = store.create_inspection(
+        id="insp-older",
+        variety="Older Red",
+        weight_kg=10,
+        location="Yeola APMC",
+        created_at="2026-09-04T10:00:00+00:00",
+    )
+    newer = store.create_inspection(
+        id="insp-newer",
+        variety="Newer Red",
+        weight_kg=12,
+        location="Lasalgaon APMC",
+        created_at="2026-09-04T11:00:00+00:00",
+    )
+    store.save_analysis_result(
+        older.id,
+        {
+            "inspectionId": older.id,
+            "grade": "Grade A",
+            "confidence": 0.91,
+            "classification": "grade_a",
+            "totalOnions": 48,
+            "modelName": "ONIVIS Vision Model",
+            "defects": [],
+            "summary": "Ready",
+            "analyzedAt": "2026-09-04T10:05:00+00:00",
+        },
+    )
+
+    response = client.get("/api/v1/inspections")
+
+    assert response.status_code == 200, response.text
+    assert response.json() == [
+        {
+            "id": newer.id,
+            "variety": "Newer Red",
+            "location": "Lasalgaon APMC",
+            "createdAt": newer.created_at,
+            "status": "draft",
+            "grade": None,
+            "totalOnions": None,
+        },
+        {
+            "id": older.id,
+            "variety": "Older Red",
+            "location": "Yeola APMC",
+            "createdAt": older.created_at,
+            "status": "draft",
+            "grade": "Grade A",
+            "totalOnions": 48,
+        },
+    ]
 
 
 def test_png_upload_and_error_handling() -> None:

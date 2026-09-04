@@ -16,6 +16,16 @@ class InspectionResponse(BaseModel):
     status: str
 
 
+class InspectionHistoryResponse(BaseModel):
+    id: str
+    variety: str
+    location: str
+    createdAt: str
+    status: str
+    grade: str | None = None
+    totalOnions: int | None = None
+
+
 class InspectionImageResponse(BaseModel):
     id: str
     url: str | None = None

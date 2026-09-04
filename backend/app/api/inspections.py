@@ -1,7 +1,12 @@
 from fastapi import APIRouter, HTTPException, UploadFile
 
 from app.schemas.analysis import ImageQualityResult, QualityCheckItem, ReviewInput, ReviewResponse
-from app.schemas.inspection import InspectionCreate, InspectionImageResponse, InspectionResponse
+from app.schemas.inspection import (
+    InspectionCreate,
+    InspectionHistoryResponse,
+    InspectionImageResponse,
+    InspectionResponse,
+)
 from app import store
 from app.storage import remove_image, upload_image
 
@@ -65,6 +70,21 @@ def _to_response(inspection: store.StoredInspection) -> InspectionResponse:
     )
 
 
+def _to_history_response(
+    inspection: store.StoredInspection,
+) -> InspectionHistoryResponse:
+    result = inspection.result or {}
+    return InspectionHistoryResponse(
+        id=inspection.id,
+        variety=inspection.variety,
+        location=inspection.location,
+        createdAt=inspection.created_at,
+        status=inspection.status,
+        grade=result.get("grade"),
+        totalOnions=result.get("totalOnions"),
+    )
+
+
 def _is_allowed_image(file: UploadFile) -> bool:
     content_type = (file.content_type or "").lower()
     if content_type in ALLOWED_IMAGE_TYPES:
@@ -83,6 +103,11 @@ def create_inspection(payload: InspectionCreate) -> InspectionResponse:
         created_at=store.utc_now_iso(),
     )
     return _to_response(inspection)
+
+
+@router.get("", response_model=list[InspectionHistoryResponse])
+def list_inspection_history() -> list[InspectionHistoryResponse]:
+    return [_to_history_response(item) for item in store.list_inspections()]
 
 
 @router.get("/{inspection_id}", response_model=InspectionResponse)
