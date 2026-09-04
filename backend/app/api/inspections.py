@@ -2,15 +2,8 @@ from fastapi import APIRouter, HTTPException, UploadFile
 
 from app.schemas.analysis import ImageQualityResult, QualityCheckItem, ReviewInput, ReviewResponse
 from app.schemas.inspection import InspectionCreate, InspectionImageResponse, InspectionResponse
-from app.store import (
-    StoredImage,
-    StoredInspection,
-    get_inspection,
-    inspections,
-    new_id,
-    store_certificate,
-    utc_now_iso,
-)
+from app import store
+from app.storage import remove_image, upload_image
 
 router = APIRouter(prefix="/inspections", tags=["Inspections"])
 
@@ -54,14 +47,14 @@ QUALITY_CHECKS = (
 )
 
 
-def _require_inspection(inspection_id: str) -> StoredInspection:
-    inspection = get_inspection(inspection_id)
+def _require_inspection(inspection_id: str) -> store.StoredInspection:
+    inspection = store.get_inspection(inspection_id)
     if inspection is None:
         raise HTTPException(status_code=404, detail="Inspection not found")
     return inspection
 
 
-def _to_response(inspection: StoredInspection) -> InspectionResponse:
+def _to_response(inspection: store.StoredInspection) -> InspectionResponse:
     return InspectionResponse(
         id=inspection.id,
         variety=inspection.variety,
@@ -82,15 +75,13 @@ def _is_allowed_image(file: UploadFile) -> bool:
 
 @router.post("", response_model=InspectionResponse)
 def create_inspection(payload: InspectionCreate) -> InspectionResponse:
-    inspection = StoredInspection(
-        id=new_id("insp"),
+    inspection = store.create_inspection(
+        id=store.new_id("insp"),
         variety=payload.variety,
         weight_kg=payload.weightKg,
         location=payload.location,
-        created_at=utc_now_iso(),
-        status="draft",
+        created_at=store.utc_now_iso(),
     )
-    inspections[inspection.id] = inspection
     return _to_response(inspection)
 
 
@@ -112,18 +103,39 @@ async def upload_inspection_image(
             detail="Unsupported file type. Upload a JPEG or PNG image.",
         )
 
-    await file.read()
-
-    image = StoredImage(
-        id=new_id("img"),
-        uploaded_at=utc_now_iso(),
-        filename=file.filename or "unknown",
-        content_type=file.content_type or "application/octet-stream",
+    content = await file.read()
+    image_id = store.new_id("img")
+    filename = file.filename or "unknown"
+    content_type = file.content_type or "application/octet-stream"
+    storage_path, url = upload_image(
+        inspection_id,
+        image_id,
+        filename,
+        content,
+        content_type,
     )
-    inspection.images.append(image)
-    inspection.status = "in_progress"
+    try:
+        image = store.create_image(
+            id=image_id,
+            inspection_id=inspection_id,
+            uploaded_at=store.utc_now_iso(),
+            filename=filename,
+            content_type=content_type,
+            storage_path=storage_path,
+            url=url,
+        )
+    except Exception:
+        try:
+            remove_image(storage_path)
+        except Exception:
+            pass
+        raise
 
-    return InspectionImageResponse(id=image.id, uploadedAt=image.uploaded_at)
+    return InspectionImageResponse(
+        id=image.id,
+        url=image.url,
+        uploadedAt=image.uploaded_at,
+    )
 
 
 @router.post(
@@ -132,7 +144,7 @@ async def upload_inspection_image(
 )
 def check_image_quality(inspection_id: str, image_id: str) -> ImageQualityResult:
     inspection = _require_inspection(inspection_id)
-    if not any(image.id == image_id for image in inspection.images):
+    if store.get_image(inspection_id, image_id) is None:
         raise HTTPException(status_code=404, detail="Image not found")
 
     return ImageQualityResult(
@@ -153,8 +165,8 @@ def submit_review(inspection_id: str, payload: ReviewInput) -> ReviewResponse:
             detail="Results not available yet. Complete analysis first.",
         )
 
-    certificate_id = new_id("cert")
-    issued_at = utc_now_iso()
+    certificate_id = store.new_id("cert")
+    issued_at = store.utc_now_iso()
     result = inspection.result or {}
     grade = payload.overrideGrade or result.get("grade") or "Grade A"
     qr_token = f"qr-{certificate_id}"
@@ -179,15 +191,15 @@ def submit_review(inspection_id: str, payload: ReviewInput) -> ReviewResponse:
             {"event": "Certificate issued", "time": issued_at},
         ],
     }
-    inspection.status = "reviewed"
-    inspection.review = {
-        "certificateId": certificate_id,
-        "approved": payload.approved,
-        "notes": payload.notes,
-        "overrideGrade": payload.overrideGrade,
-    }
-    inspection.certificate = certificate
-    store_certificate(certificate)
+    store.save_review_and_certificate(
+        inspection_id,
+        {
+            "approved": payload.approved,
+            "notes": payload.notes,
+            "overrideGrade": payload.overrideGrade,
+        },
+        certificate,
+    )
     return ReviewResponse(
         inspectionId=inspection_id,
         certificateId=certificate_id,

@@ -1,13 +1,147 @@
+from dataclasses import dataclass
+from typing import Any
+
+import pytest
 from fastapi.testclient import TestClient
 
+from app import storage, store
 from app.main import app
-from app.store import reset
 
 client = TestClient(app)
 
 
-def setup_function() -> None:
-    reset()
+@dataclass
+class FakeResponse:
+    data: Any
+
+
+class FakeQuery:
+    def __init__(self, client: "FakeSupabase", table: str) -> None:
+        self.client = client
+        self.table_name = table
+        self.operation = "select"
+        self.payload: Any = None
+        self.filters: list[tuple[str, Any]] = []
+        self.max_rows: int | None = None
+        self.order_column: str | None = None
+
+    def select(self, _columns: str) -> "FakeQuery":
+        self.operation = "select"
+        return self
+
+    def insert(self, payload: dict[str, Any]) -> "FakeQuery":
+        self.operation = "insert"
+        self.payload = payload
+        return self
+
+    def upsert(self, payload: dict[str, Any]) -> "FakeQuery":
+        self.operation = "upsert"
+        self.payload = payload
+        return self
+
+    def update(self, payload: dict[str, Any]) -> "FakeQuery":
+        self.operation = "update"
+        self.payload = payload
+        return self
+
+    def delete(self) -> "FakeQuery":
+        self.operation = "delete"
+        return self
+
+    def eq(self, column: str, value: Any) -> "FakeQuery":
+        self.filters.append((column, value))
+        return self
+
+    def limit(self, count: int) -> "FakeQuery":
+        self.max_rows = count
+        return self
+
+    def order(self, column: str) -> "FakeQuery":
+        self.order_column = column
+        return self
+
+    def execute(self) -> FakeResponse:
+        rows = self.client.tables.setdefault(self.table_name, [])
+        matches = [
+            row
+            for row in rows
+            if all(row.get(column) == value for column, value in self.filters)
+        ]
+
+        if self.operation == "select":
+            if self.order_column:
+                matches.sort(key=lambda row: row[self.order_column])
+            if self.max_rows is not None:
+                matches = matches[: self.max_rows]
+            return FakeResponse([dict(row) for row in matches])
+
+        if self.operation == "insert":
+            row = dict(self.payload)
+            rows.append(row)
+            return FakeResponse([dict(row)])
+
+        if self.operation == "upsert":
+            row = dict(self.payload)
+            key = "inspection_id" if self.table_name in {"analysis_results", "reviews"} else "id"
+            existing = next((item for item in rows if item.get(key) == row[key]), None)
+            if existing is None:
+                rows.append(row)
+            else:
+                existing.update(row)
+            return FakeResponse([dict(row)])
+
+        if self.operation == "update":
+            for row in matches:
+                row.update(self.payload)
+            return FakeResponse([dict(row) for row in matches])
+
+        if self.operation == "delete":
+            self.client.tables[self.table_name] = [
+                row for row in rows if row not in matches
+            ]
+            return FakeResponse([])
+
+        raise AssertionError(f"Unsupported fake operation: {self.operation}")
+
+
+class FakeStorageBucket:
+    def __init__(self, client: "FakeSupabase") -> None:
+        self.client = client
+
+    def upload(self, path: str, content: bytes, _options: dict[str, str]) -> None:
+        self.client.objects[path] = content
+
+    def get_public_url(self, path: str) -> str:
+        return f"https://storage.test/inspection-images/{path}"
+
+    def remove(self, paths: list[str]) -> None:
+        for path in paths:
+            self.client.objects.pop(path, None)
+
+
+class FakeStorage:
+    def __init__(self, client: "FakeSupabase") -> None:
+        self.client = client
+
+    def from_(self, _bucket: str) -> FakeStorageBucket:
+        return FakeStorageBucket(self.client)
+
+
+class FakeSupabase:
+    def __init__(self) -> None:
+        self.tables: dict[str, list[dict[str, Any]]] = {}
+        self.objects: dict[str, bytes] = {}
+        self.storage = FakeStorage(self)
+
+    def table(self, name: str) -> FakeQuery:
+        return FakeQuery(self, name)
+
+
+@pytest.fixture(autouse=True)
+def fake_supabase(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = FakeSupabase()
+    monkeypatch.setattr(store, "get_supabase_client", lambda: fake)
+    monkeypatch.setattr(storage, "get_supabase_client", lambda: fake)
 
 
 def _create_inspection() -> str:
@@ -27,6 +161,9 @@ def _create_inspection() -> str:
     assert body["status"] == "draft"
     assert body["id"]
     assert body["createdAt"]
+    persisted = client.get(f"/api/v1/inspections/{body['id']}")
+    assert persisted.status_code == 200
+    assert persisted.json() == body
     return body["id"]
 
 
@@ -39,6 +176,7 @@ def _upload_image(inspection_id: str, filename: str = "sample.jpg", content_type
     body = response.json()
     assert body["id"]
     assert body["uploadedAt"]
+    assert body["url"].startswith("https://storage.test/")
     return body["id"]
 
 

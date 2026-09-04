@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.api.inspections import _require_inspection
 from app.schemas.analysis import AnalysisStatusResponse, InspectionResult
-from app.store import StoredInspection, utc_now_iso
+from app import store
 
 router = APIRouter(prefix="/inspections", tags=["Analysis"])
 
@@ -28,17 +28,20 @@ MOCK_RESULT_TEMPLATE = {
 }
 
 
-def _complete_analysis(inspection: StoredInspection) -> None:
-    inspection.analysis_status = "completed"
-    inspection.status = "completed"
-    inspection.result = {
+def _complete_analysis(inspection: store.StoredInspection) -> None:
+    result = {
         "inspectionId": inspection.id,
         **MOCK_RESULT_TEMPLATE,
-        "analyzedAt": utc_now_iso(),
+        "analyzedAt": store.utc_now_iso(),
     }
+    store.save_analysis_result(inspection.id, result)
+    store.update_inspection(
+        inspection.id,
+        {"analysis_status": "completed", "status": "completed"},
+    )
 
 
-def _status_payload(inspection: StoredInspection) -> AnalysisStatusResponse:
+def _status_payload(inspection: store.StoredInspection) -> AnalysisStatusResponse:
     status = inspection.analysis_status
     if status is None:
         return AnalysisStatusResponse(
@@ -84,9 +87,14 @@ def analyze_inspection(inspection_id: str) -> AnalysisStatusResponse:
             detail="Upload at least one JPEG or PNG image before analysis.",
         )
 
-    inspection.analysis_status = "pending"
-    inspection.analysis_poll_count = 0
-    inspection.result = None
+    store.update_inspection(
+        inspection_id,
+        {
+            "analysis_status": "pending",
+            "analysis_poll_count": 0,
+        },
+    )
+    inspection = _require_inspection(inspection_id)
     return _status_payload(inspection)
 
 
@@ -95,11 +103,16 @@ def get_analysis_status(inspection_id: str) -> AnalysisStatusResponse:
     inspection = _require_inspection(inspection_id)
 
     if inspection.analysis_status in {"pending", "processing"}:
-        inspection.analysis_poll_count += 1
-        if inspection.analysis_poll_count < 4:
-            inspection.analysis_status = "processing"
+        poll_count = inspection.analysis_poll_count + 1
+        if poll_count < 4:
+            store.update_inspection(
+                inspection_id,
+                {"analysis_poll_count": poll_count, "analysis_status": "processing"},
+            )
         else:
             _complete_analysis(inspection)
+
+        inspection = _require_inspection(inspection_id)
 
     return _status_payload(inspection)
 

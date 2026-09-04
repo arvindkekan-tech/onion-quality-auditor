@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
 from app.schemas.certificate import Certificate, VerificationResult
-from app.store import get_certificate, get_certificate_by_token
+from app import store
 
 router = APIRouter(tags=["Certificates"])
 
@@ -12,7 +12,7 @@ router = APIRouter(tags=["Certificates"])
     response_model_exclude_none=True,
 )
 def read_certificate(certificate_id: str) -> Certificate:
-    certificate = get_certificate(certificate_id)
+    certificate = store.get_certificate(certificate_id)
     if certificate is None:
         raise HTTPException(status_code=404, detail="Certificate not found")
     return Certificate.model_validate(certificate)
@@ -24,7 +24,7 @@ def read_certificate(certificate_id: str) -> Certificate:
     response_model_exclude_none=True,
 )
 def verify_certificate(token: str) -> VerificationResult:
-    certificate = get_certificate_by_token(token)
+    certificate = store.get_certificate_by_token(token)
     if certificate is None:
         return VerificationResult(
             valid=False,

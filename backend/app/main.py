@@ -8,6 +8,7 @@ from app.api.certificates import router as certificates_router
 from app.api.health import router as health_router
 from app.api.inspections import router as inspections_router
 from app.core.config import settings
+from app.store import PersistenceError
 
 app = FastAPI(title=settings.app_name)
 
@@ -36,6 +37,17 @@ async def http_exception_handler(_request: Request, exc: HTTPException) -> JSONR
     return JSONResponse(
         status_code=exc.status_code,
         content={"message": message, "code": str(exc.status_code)},
+    )
+
+
+@app.exception_handler(PersistenceError)
+async def persistence_exception_handler(
+    _request: Request,
+    _exc: PersistenceError,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=503,
+        content={"message": "Persistence service unavailable", "code": "persistence_error"},
     )
 
 
