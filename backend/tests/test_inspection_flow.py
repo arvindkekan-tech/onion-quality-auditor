@@ -330,6 +330,10 @@ def test_inspection_history_is_newest_first_and_maps_analysis() -> None:
             "status": "draft",
             "grade": None,
             "totalOnions": None,
+            "imageId": None,
+            "analysisStatus": None,
+            "certificateId": None,
+            "reviewSubmitted": False,
         },
         {
             "id": older.id,
@@ -339,8 +343,48 @@ def test_inspection_history_is_newest_first_and_maps_analysis() -> None:
             "status": "draft",
             "grade": "Grade A",
             "totalOnions": 48,
+            "imageId": None,
+            "analysisStatus": None,
+            "certificateId": None,
+            "reviewSubmitted": False,
         },
     ]
+
+
+def test_inspection_history_exposes_resume_state() -> None:
+    inspection_id = _create_inspection()
+    image_id = _upload_image(inspection_id)
+
+    initial = client.get("/api/v1/inspections").json()[0]
+    assert initial["imageId"] == image_id
+    assert initial["analysisStatus"] is None
+    assert initial["certificateId"] is None
+    assert initial["reviewSubmitted"] is False
+
+    started = client.post(f"/api/v1/inspections/{inspection_id}/analyze")
+    assert started.status_code == 200
+    pending = client.get("/api/v1/inspections").json()[0]
+    assert pending["analysisStatus"] == "pending"
+
+    processing = client.get(f"/api/v1/inspections/{inspection_id}/analysis-status")
+    assert processing.status_code == 200
+    current = client.get("/api/v1/inspections").json()[0]
+    assert current["analysisStatus"] == "processing"
+
+    for _ in range(3):
+        assert client.get(f"/api/v1/inspections/{inspection_id}/analysis-status").status_code == 200
+    completed = client.get("/api/v1/inspections").json()[0]
+    assert completed["analysisStatus"] == "completed"
+
+    review = client.patch(
+        f"/api/v1/inspections/{inspection_id}/review",
+        json={"approved": True, "notes": "Ready"},
+    )
+    assert review.status_code == 200
+    certificate_id = review.json()["certificateId"]
+    reviewed = client.get("/api/v1/inspections").json()[0]
+    assert reviewed["reviewSubmitted"] is True
+    assert reviewed["certificateId"] == certificate_id
 
 
 def test_png_upload_and_error_handling() -> None:

@@ -24,6 +24,10 @@ class InspectionHistoryResponse(BaseModel):
     status: str
     grade: str | None = None
     totalOnions: int | None = None
+    imageId: str | None = None
+    analysisStatus: str | None = None
+    certificateId: str | None = None
+    reviewSubmitted: bool
 
 
 class InspectionImageResponse(BaseModel):

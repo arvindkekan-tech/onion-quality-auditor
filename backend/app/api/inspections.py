@@ -74,6 +74,14 @@ def _to_history_response(
     inspection: store.StoredInspection,
 ) -> InspectionHistoryResponse:
     result = inspection.result or {}
+    latest_image = inspection.images[-1] if inspection.images else None
+    certificate_id = (
+        inspection.certificate.get("id")
+        if inspection.certificate
+        else inspection.review.get("certificateId")
+        if inspection.review
+        else None
+    )
     return InspectionHistoryResponse(
         id=inspection.id,
         variety=inspection.variety,
@@ -82,6 +90,10 @@ def _to_history_response(
         status=inspection.status,
         grade=result.get("grade"),
         totalOnions=result.get("totalOnions"),
+        imageId=latest_image.id if latest_image else None,
+        analysisStatus=inspection.analysis_status,
+        certificateId=certificate_id,
+        reviewSubmitted=inspection.review is not None,
     )
 
 
