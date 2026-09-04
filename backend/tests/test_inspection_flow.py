@@ -269,6 +269,20 @@ def test_full_inspection_flow() -> None:
     assert len(verify_body["auditTimeline"]) == 4
 
 
+def test_analysis_status_uses_same_persisted_inspection_id() -> None:
+    inspection_id = _create_inspection()
+    image_id = _upload_image(inspection_id, filename="status-check.png", content_type="image/png")
+
+    started = client.post(f"/api/v1/inspections/{inspection_id}/analyze")
+    assert started.status_code == 200, started.text
+    assert started.json()["inspectionId"] == inspection_id
+
+    status = client.get(f"/api/v1/inspections/{inspection_id}/analysis-status")
+    assert status.status_code == 200, status.text
+    assert status.json()["inspectionId"] == inspection_id
+    assert status.json()["status"] in {"pending", "processing", "completed"}
+
+
 def test_png_upload_and_error_handling() -> None:
     inspection_id = _create_inspection()
     _upload_image(inspection_id, filename="sample.png", content_type="image/png")
