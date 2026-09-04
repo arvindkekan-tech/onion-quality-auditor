@@ -1,3 +1,5 @@
+import { z } from 'zod'
+
 import { apiClient } from '@/lib/api/client'
 import { useMockApi } from '@/lib/api/config'
 import * as mock from '@/lib/api/mock/inspections.mock'
@@ -6,6 +8,7 @@ import type {
   CreateInspectionInput,
   ImageQualityResult,
   Inspection,
+  InspectionHistoryItem,
   InspectionImage,
   InspectionResult,
   ReviewInput,
@@ -15,10 +18,15 @@ import {
   analysisStatusResponseSchema,
   imageQualityResultSchema,
   inspectionImageSchema,
+  inspectionHistoryItemSchema,
   inspectionResultSchema,
   inspectionSchema,
   reviewResponseSchema,
 } from '@/types/inspection'
+
+export async function getInspectionHistory(): Promise<InspectionHistoryItem[]> {
+  return apiClient.get('/inspections', z.array(inspectionHistoryItemSchema))
+}
 
 export async function createInspection(
   input: CreateInspectionInput,

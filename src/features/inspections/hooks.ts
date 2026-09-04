@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   checkImageQuality,
   createInspection,
+  getInspectionHistory,
   getAnalysisStatus,
   getInspectionResults,
   startAnalysis,
@@ -16,8 +17,16 @@ import type {
 
 export const inspectionKeys = {
   all: ['inspections'] as const,
+  history: () => ['inspections', 'history'] as const,
   analysis: (id: string) => ['inspections', id, 'analysis'] as const,
   results: (id: string) => ['inspections', id, 'results'] as const,
+}
+
+export function useInspectionHistory() {
+  return useQuery({
+    queryKey: inspectionKeys.history(),
+    queryFn: getInspectionHistory,
+  })
 }
 
 export function useCreateInspection() {

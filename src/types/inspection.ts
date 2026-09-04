@@ -69,6 +69,20 @@ export const inspectionSchema = z.object({
 
 export type Inspection = z.infer<typeof inspectionSchema>
 
+export const inspectionHistoryItemSchema = z.object({
+  id: z.string(),
+  variety: z.string(),
+  location: z.string(),
+  createdAt: z.string(),
+  status: z.string(),
+  grade: z.string().nullable().optional(),
+  totalOnions: z.number().int().nullable().optional(),
+})
+
+export type InspectionHistoryItem = z.infer<
+  typeof inspectionHistoryItemSchema
+>
+
 export const createInspectionInputSchema = z.object({
   variety: z.string().min(1),
   weightKg: z.number().positive(),
