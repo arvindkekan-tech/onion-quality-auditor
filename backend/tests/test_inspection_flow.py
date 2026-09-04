@@ -1,0 +1,200 @@
+from fastapi.testclient import TestClient
+
+from app.main import app
+from app.store import reset
+
+client = TestClient(app)
+
+
+def setup_function() -> None:
+    reset()
+
+
+def _create_inspection() -> str:
+    response = client.post(
+        "/api/v1/inspections",
+        json={
+            "variety": "Nashik Red",
+            "weightKg": 19.2,
+            "location": "Lasalgaon APMC",
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["variety"] == "Nashik Red"
+    assert body["weightKg"] == 19.2
+    assert body["location"] == "Lasalgaon APMC"
+    assert body["status"] == "draft"
+    assert body["id"]
+    assert body["createdAt"]
+    return body["id"]
+
+
+def _upload_image(inspection_id: str, filename: str = "sample.jpg", content_type: str = "image/jpeg") -> str:
+    response = client.post(
+        f"/api/v1/inspections/{inspection_id}/images",
+        files={"file": (filename, b"fake-image-bytes", content_type)},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["id"]
+    assert body["uploadedAt"]
+    return body["id"]
+
+
+def test_health_and_root() -> None:
+    root = client.get("/")
+    assert root.status_code == 200
+    assert root.json()["service"] == "onivis-api"
+
+    health = client.get("/api/v1/health")
+    assert health.status_code == 200
+    assert health.json() == {"status": "ok", "service": "onivis-api"}
+
+
+def test_full_inspection_flow() -> None:
+    inspection_id = _create_inspection()
+    image_id = _upload_image(inspection_id)
+
+    quality = client.post(
+        f"/api/v1/inspections/{inspection_id}/images/{image_id}/quality-check"
+    )
+    assert quality.status_code == 200, quality.text
+    quality_body = quality.json()
+    assert quality_body["imageId"] == image_id
+    assert quality_body["passed"] is True
+    assert quality_body["issues"] == []
+    assert quality_body["score"] == 92
+    assert len(quality_body["checks"]) == 4
+
+    analyze = client.post(f"/api/v1/inspections/{inspection_id}/analyze")
+    assert analyze.status_code == 200, analyze.text
+    assert analyze.json()["status"] == "pending"
+    assert analyze.json()["inspectionId"] == inspection_id
+
+    statuses = []
+    for _ in range(4):
+        status = client.get(f"/api/v1/inspections/{inspection_id}/analysis-status")
+        assert status.status_code == 200, status.text
+        statuses.append(status.json()["status"])
+    assert "processing" in statuses
+    assert statuses[-1] == "completed"
+    assert status.json()["progress"] == 100
+
+    results = client.get(f"/api/v1/inspections/{inspection_id}/results")
+    assert results.status_code == 200, results.text
+    result_body = results.json()
+    assert result_body["inspectionId"] == inspection_id
+    assert result_body["grade"] == "Grade A"
+    assert result_body["confidence"] == 0.91
+    assert result_body["classification"] == "grade_a"
+    assert result_body["totalOnions"] == 48
+    assert result_body["modelName"] == "ONIVIS Vision Model"
+    assert result_body["summary"]
+    assert result_body["analyzedAt"]
+    assert result_body["defects"][0]["label"] == "Sprouted"
+
+    review = client.patch(
+        f"/api/v1/inspections/{inspection_id}/review",
+        json={"approved": True, "notes": "Looks good"},
+    )
+    assert review.status_code == 200, review.text
+    review_body = review.json()
+    assert review_body["inspectionId"] == inspection_id
+    assert review_body["approved"] is True
+    assert review_body["notes"] == "Looks good"
+    certificate_id = review_body["certificateId"]
+    assert certificate_id.startswith("cert-")
+
+    certificate = client.get(f"/api/v1/certificates/{certificate_id}")
+    assert certificate.status_code == 200, certificate.text
+    cert_body = certificate.json()
+    assert cert_body["id"] == certificate_id
+    assert cert_body["inspectionId"] == inspection_id
+    assert cert_body["grade"] == "Grade A"
+    assert cert_body["issuedAt"]
+    assert cert_body["batchLabel"] == "Nashik Red — Lasalgaon APMC"
+    assert cert_body["qrToken"] == f"qr-{certificate_id}"
+    assert cert_body["inspectorName"] == "Rajesh Patil"
+    assert cert_body["procurementCentre"] == "Lasalgaon APMC"
+    assert cert_body["specification"] == "Nashik Red"
+    assert cert_body["sampleSize"] == 48
+    assert cert_body["confidence"] == 0.91
+    assert cert_body["defectSummary"] == "Looks good"
+
+    verified = client.get(f"/api/v1/verify/{cert_body['qrToken']}")
+    assert verified.status_code == 200, verified.text
+    verify_body = verified.json()
+    assert verify_body["valid"] is True
+    assert verify_body["message"] == "Certificate is valid and has not been revoked."
+    assert verify_body["certificate"]["id"] == certificate_id
+    assert len(verify_body["auditTimeline"]) == 4
+
+
+def test_png_upload_and_error_handling() -> None:
+    inspection_id = _create_inspection()
+    _upload_image(inspection_id, filename="sample.png", content_type="image/png")
+
+    missing = client.get("/api/v1/inspections/does-not-exist")
+    assert missing.status_code == 404
+    assert missing.json()["message"] == "Inspection not found"
+
+    bad_type = client.post(
+        f"/api/v1/inspections/{inspection_id}/images",
+        files={"file": ("notes.txt", b"not-an-image", "text/plain")},
+    )
+    assert bad_type.status_code == 400
+    assert "JPEG or PNG" in bad_type.json()["message"]
+
+    quality_missing_image = client.post(
+        f"/api/v1/inspections/{inspection_id}/images/img-missing/quality-check"
+    )
+    assert quality_missing_image.status_code == 404
+
+    results_too_soon = client.get(f"/api/v1/inspections/{inspection_id}/results")
+    assert results_too_soon.status_code == 400
+
+    invalid_create = client.post("/api/v1/inspections", json={"variety": ""})
+    assert invalid_create.status_code == 400
+    assert invalid_create.json()["code"] == "validation_error"
+
+
+def test_certificate_and_verify_errors() -> None:
+    missing = client.get("/api/v1/certificates/cert-missing")
+    assert missing.status_code == 404
+    assert missing.json()["message"] == "Certificate not found"
+
+    invalid = client.get("/api/v1/verify/unknown-token")
+    assert invalid.status_code == 200
+    body = invalid.json()
+    assert body["valid"] is False
+    assert body["message"] == "Certificate not found or has been revoked."
+    assert "certificate" not in body or body["certificate"] is None
+
+
+def test_unversioned_prefix_matches_frontend_default_base_url() -> None:
+    response = client.post(
+        "/inspections",
+        json={
+            "variety": "Nashik Red",
+            "weightKg": 12.0,
+            "location": "Yeola APMC",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["id"]
+
+
+def test_cors_allows_frontend_origins() -> None:
+    response = client.options(
+        "/api/v1/health",
+        headers={
+            "Origin": "https://onivis-frontend.onrender.com",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert response.status_code in {200, 204}
+    assert (
+        response.headers.get("access-control-allow-origin")
+        == "https://onivis-frontend.onrender.com"
+    )

@@ -1,68 +1,115 @@
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, HTTPException
 
-from app.api.inspections import inspections
-from app.schemas.analysis import AnalysisResponse, DefectCounts, ImageUploadResponse
+from app.api.inspections import _require_inspection
+from app.schemas.analysis import AnalysisStatusResponse, InspectionResult
+from app.store import StoredInspection, utc_now_iso
 
-router = APIRouter(prefix="/api/v1/inspections", tags=["Analysis"])
+router = APIRouter(prefix="/inspections", tags=["Analysis"])
 
-ALLOWED_IMAGE_TYPES = {
-    "image/jpeg",
-    "image/jpg",
-    "image/png",
-    "image/pjpeg",
+MOCK_RESULT_TEMPLATE = {
+    "grade": "Grade A",
+    "confidence": 0.91,
+    "classification": "grade_a",
+    "totalOnions": 48,
+    "modelName": "ONIVIS Vision Model",
+    "defects": [
+        {"label": "Sprouted", "count": 2, "category": "visual"},
+        {"label": "Mechanical Damage", "count": 3, "category": "visual"},
+        {"label": "Undersized", "count": 1, "category": "visual"},
+        {"label": "Surface Discoloration", "count": 4, "category": "visual"},
+        {"label": "External Rot", "count": 0, "category": "visual"},
+        {"label": "Split / Cracked", "count": 1, "category": "visual"},
+        {"label": "Oversized", "count": 0, "category": "visual"},
+    ],
+    "summary": (
+        "Batch meets Grade A procurement thresholds. "
+        "Minor visible defects within tolerance."
+    ),
 }
-ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 
 
-def _require_inspection(inspection_id: str) -> None:
-    if inspection_id not in inspections:
-        raise HTTPException(status_code=404, detail="Inspection not found")
+def _complete_analysis(inspection: StoredInspection) -> None:
+    inspection.analysis_status = "completed"
+    inspection.status = "completed"
+    inspection.result = {
+        "inspectionId": inspection.id,
+        **MOCK_RESULT_TEMPLATE,
+        "analyzedAt": utc_now_iso(),
+    }
 
 
-def _is_allowed_image(file: UploadFile) -> bool:
-    content_type = (file.content_type or "").lower()
-    if content_type in ALLOWED_IMAGE_TYPES:
-        return True
-    name = (file.filename or "").lower()
-    return any(name.endswith(ext) for ext in ALLOWED_EXTENSIONS)
-
-
-@router.post("/{inspection_id}/images", response_model=ImageUploadResponse)
-async def upload_inspection_image(
-    inspection_id: str,
-    file: UploadFile,
-) -> ImageUploadResponse:
-    _require_inspection(inspection_id)
-
-    if not _is_allowed_image(file):
-        raise HTTPException(status_code=400, detail="Unsupported file type. Upload a JPEG or PNG image.")
-
-    # Read the file to confirm the upload, but do not save it to disk yet.
-    await file.read()
-
-    return ImageUploadResponse(
-        inspection_id=inspection_id,
-        filename=file.filename or "unknown",
-        content_type=file.content_type or "application/octet-stream",
-        status="uploaded",
-    )
-
-
-@router.post("/{inspection_id}/analyze", response_model=AnalysisResponse)
-def analyze_inspection(inspection_id: str) -> AnalysisResponse:
-    _require_inspection(inspection_id)
-
-    # MOCK result only — not real defect detection. Same values every time.
-    return AnalysisResponse(
-        inspection_id=inspection_id,
+def _status_payload(inspection: StoredInspection) -> AnalysisStatusResponse:
+    status = inspection.analysis_status
+    if status is None:
+        return AnalysisStatusResponse(
+            inspectionId=inspection.id,
+            status="pending",
+            progress=0,
+            message="Waiting to start analysis.",
+        )
+    if status == "pending":
+        return AnalysisStatusResponse(
+            inspectionId=inspection.id,
+            status="pending",
+            progress=0,
+            message="Analysis queued.",
+        )
+    if status == "processing":
+        progress = 35 if inspection.analysis_poll_count < 2 else 75
+        message = (
+            "Running quality model…"
+            if inspection.analysis_poll_count < 2
+            else "Aggregating defect signals…"
+        )
+        return AnalysisStatusResponse(
+            inspectionId=inspection.id,
+            status="processing",
+            progress=progress,
+            message=message,
+        )
+    return AnalysisStatusResponse(
+        inspectionId=inspection.id,
         status="completed",
-        grade="A",
-        confidence=0.92,
-        defects=DefectCounts(
-            damaged=2,
-            rotted=1,
-            sprouted=0,
-            undersized=3,
-        ),
-        visual_quality_score=91,
+        progress=100,
+        message="Analysis complete.",
     )
+
+
+@router.post("/{inspection_id}/analyze", response_model=AnalysisStatusResponse)
+def analyze_inspection(inspection_id: str) -> AnalysisStatusResponse:
+    inspection = _require_inspection(inspection_id)
+    if not inspection.images:
+        raise HTTPException(
+            status_code=400,
+            detail="Upload at least one JPEG or PNG image before analysis.",
+        )
+
+    inspection.analysis_status = "pending"
+    inspection.analysis_poll_count = 0
+    inspection.result = None
+    return _status_payload(inspection)
+
+
+@router.get("/{inspection_id}/analysis-status", response_model=AnalysisStatusResponse)
+def get_analysis_status(inspection_id: str) -> AnalysisStatusResponse:
+    inspection = _require_inspection(inspection_id)
+
+    if inspection.analysis_status in {"pending", "processing"}:
+        inspection.analysis_poll_count += 1
+        if inspection.analysis_poll_count < 4:
+            inspection.analysis_status = "processing"
+        else:
+            _complete_analysis(inspection)
+
+    return _status_payload(inspection)
+
+
+@router.get("/{inspection_id}/results", response_model=InspectionResult)
+def get_inspection_results(inspection_id: str) -> InspectionResult:
+    inspection = _require_inspection(inspection_id)
+    if inspection.result is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Results not available yet. Complete analysis first.",
+        )
+    return InspectionResult.model_validate(inspection.result)

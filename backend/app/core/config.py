@@ -4,10 +4,13 @@ import os
 
 
 class Settings:
-    # Used in API metadata and the root JSON response.
     app_name: str = os.getenv("ONIVIS_APP_NAME", "ONIVIS API")
-    # local / staging / production — informational only for now.
     environment: str = os.getenv("ONIVIS_ENV", "local")
+    cors_origins: list[str] = [
+        "http://localhost:5173",
+        "http://localhost:4173",
+        "https://onivis-frontend.onrender.com",
+    ]
 
 
 settings = Settings()

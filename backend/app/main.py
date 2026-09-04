@@ -1,16 +1,53 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
+from app.api.analysis import router as analysis_router
+from app.api.certificates import router as certificates_router
 from app.api.health import router as health_router
 from app.api.inspections import router as inspections_router
-from app.api.analysis import router as analysis_router
 from app.core.config import settings
 
 app = FastAPI(title=settings.app_name)
 
-# Versioned API routes (health first; more routers will be added later).
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(health_router)
+app.include_router(inspections_router, prefix="/api/v1")
+app.include_router(analysis_router, prefix="/api/v1")
+app.include_router(certificates_router, prefix="/api/v1")
+# Frontend default VITE_API_BASE_URL is http://localhost:8000 (no /api/v1).
 app.include_router(inspections_router)
 app.include_router(analysis_router)
+app.include_router(certificates_router)
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(_request: Request, exc: HTTPException) -> JSONResponse:
+    detail = exc.detail
+    message = detail if isinstance(detail, str) else str(detail)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"message": message, "code": str(exc.status_code)},
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(
+    _request: Request,
+    _exc: RequestValidationError,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=400,
+        content={"message": "Invalid request", "code": "validation_error"},
+    )
 
 
 @app.get("/")
