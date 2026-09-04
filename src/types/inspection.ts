@@ -77,6 +77,10 @@ export const inspectionHistoryItemSchema = z.object({
   status: z.string(),
   grade: z.string().nullable().optional(),
   totalOnions: z.number().int().nullable().optional(),
+  imageId: z.string().nullable().optional(),
+  analysisStatus: analysisStatusSchema.nullable().optional(),
+  certificateId: z.string().nullable().optional(),
+  reviewSubmitted: z.boolean(),
 })
 
 export type InspectionHistoryItem = z.infer<

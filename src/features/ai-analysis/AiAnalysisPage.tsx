@@ -1,6 +1,6 @@
 import { Brain, CheckCircle2, Loader2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { InspectionStepLayout } from '@/components/layout/InspectionStepLayout'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -17,17 +17,19 @@ import { cn } from '@/lib/utils'
 export function AiAnalysisPage() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const startAnalysis = useStartAnalysis(id)
   const analysisStatus = useAnalysisStatus(id)
   const hasStarted = useRef(false)
   const [showComplete, setShowComplete] = useState(false)
+  const isResuming = searchParams.get('resume') === 'true'
 
   useEffect(() => {
-    if (!hasStarted.current) {
+    if (!isResuming && !hasStarted.current) {
       hasStarted.current = true
       startAnalysis.mutate()
     }
-  }, [startAnalysis])
+  }, [isResuming, startAnalysis])
 
   const status = analysisStatus.data
   const isComplete = status?.status === 'completed'

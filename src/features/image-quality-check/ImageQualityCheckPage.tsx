@@ -22,7 +22,9 @@ export function ImageQualityCheckPage() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
-  const imageId = (location.state as LocationState | null)?.imageId ?? 'demo-image'
+  const queryImageId = new URLSearchParams(location.search).get('imageId')
+  const imageId =
+    queryImageId ?? (location.state as LocationState | null)?.imageId ?? 'demo-image'
   const previewUrl = useInspectionDraftStore((s) => s.previewUrl)
   const { mutate, isPending, data, isError } = useCheckImageQuality(id, imageId)
 

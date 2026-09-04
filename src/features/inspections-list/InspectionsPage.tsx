@@ -3,16 +3,9 @@ import { ClipboardList } from 'lucide-react'
 import { EmptyState, InspectionCard, SectionHeader } from '@/components/shared'
 import { useInspectionHistory } from '@/features/inspections/hooks'
 import type { InspectionListItem } from '@/lib/demo-data'
+import type { InspectionHistoryItem } from '@/types/inspection'
 
-function toHistoryCard(item: {
-  id: string
-  variety: string
-  location: string
-  createdAt: string
-  status: string
-  grade?: string | null
-  totalOnions?: number | null
-}): InspectionListItem {
+function toHistoryCard(item: InspectionHistoryItem): InspectionListItem {
   const status = item.status === 'rejected' ? 'rejected' :
     item.status === 'draft' || item.status === 'in_progress'
       ? 'in_progress'
@@ -27,6 +20,24 @@ function toHistoryCard(item: {
     grade: item.grade ?? 'Pending',
     sampleCount: item.totalOnions ?? 0,
   }
+}
+
+function resumeHref(item: InspectionHistoryItem) {
+  if (item.certificateId) return `/certificate/${item.certificateId}`
+  if (item.reviewSubmitted) return `/inspection/${item.id}/review`
+  if (item.analysisStatus === 'completed') {
+    return `/inspection/${item.id}/results`
+  }
+  if (item.analysisStatus === 'pending' || item.analysisStatus === 'processing') {
+    return `/inspection/${item.id}/analysis?resume=true`
+  }
+  if (item.analysisStatus === 'failed' && item.imageId) {
+    return `/inspection/${item.id}/quality?imageId=${encodeURIComponent(item.imageId)}`
+  }
+  if (item.imageId) {
+    return `/inspection/${item.id}/quality?imageId=${encodeURIComponent(item.imageId)}`
+  }
+  return `/inspection/${item.id}/capture`
 }
 
 export function InspectionsPage() {
@@ -60,7 +71,18 @@ export function InspectionsPage() {
       ) : (
         <div className="space-y-3">
           {inspections.map((inspection) => (
-            <InspectionCard key={inspection.id} inspection={inspection} />
+            <InspectionCard
+              key={inspection.id}
+              inspection={inspection}
+              href={resumeHref(historyQuery.data?.find((item) => item.id === inspection.id) ?? {
+                id: inspection.id,
+                variety: inspection.batchId,
+                location: inspection.centre,
+                createdAt: inspection.dateTime,
+                status: 'in_progress',
+                reviewSubmitted: false,
+              })}
+            />
           ))}
         </div>
       )}
