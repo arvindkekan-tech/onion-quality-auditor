@@ -8,7 +8,7 @@ from app.schemas.inspection import (
     InspectionResponse,
 )
 from app import store
-from app.storage import remove_image, upload_image
+from app.storage import remove_image, remove_images, upload_image
 
 router = APIRouter(prefix="/inspections", tags=["Inspections"])
 
@@ -125,6 +125,19 @@ def list_inspection_history() -> list[InspectionHistoryResponse]:
 @router.get("/{inspection_id}", response_model=InspectionResponse)
 def get_inspection_by_id(inspection_id: str) -> InspectionResponse:
     return _to_response(_require_inspection(inspection_id))
+
+
+@router.delete("/{inspection_id}", status_code=204)
+def delete_inspection(inspection_id: str) -> None:
+    inspection = _require_inspection(inspection_id)
+    try:
+        remove_images([image.storage_path for image in inspection.images])
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Unable to remove inspection images from Storage",
+        ) from exc
+    store.delete_inspection(inspection_id)
 
 
 @router.post("/{inspection_id}/images", response_model=InspectionImageResponse)

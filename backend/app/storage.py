@@ -34,3 +34,10 @@ def upload_image(
 def remove_image(path: str) -> None:
     storage = get_supabase_client().storage.from_(settings.supabase_storage_bucket)
     storage.remove([path])
+
+
+def remove_images(paths: list[str]) -> None:
+    if not paths:
+        return
+    storage = get_supabase_client().storage.from_(settings.supabase_storage_bucket)
+    storage.remove(paths)

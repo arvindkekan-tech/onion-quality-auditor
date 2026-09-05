@@ -1,38 +1,39 @@
 from fastapi import APIRouter, HTTPException
 
 from app.api.inspections import _require_inspection
+from app.analysis_provider import get_analysis_provider
 from app.schemas.analysis import AnalysisStatusResponse, InspectionResult
 from app import store
 
 router = APIRouter(prefix="/inspections", tags=["Analysis"])
 
-MOCK_RESULT_TEMPLATE = {
-    "grade": "Grade A",
-    "confidence": 0.91,
-    "classification": "grade_a",
-    "totalOnions": 48,
-    "modelName": "ONIVIS Vision Model",
-    "defects": [
-        {"label": "Sprouted", "count": 2, "category": "visual"},
-        {"label": "Mechanical Damage", "count": 3, "category": "visual"},
-        {"label": "Undersized", "count": 1, "category": "visual"},
-        {"label": "Surface Discoloration", "count": 4, "category": "visual"},
-        {"label": "External Rot", "count": 0, "category": "visual"},
-        {"label": "Split / Cracked", "count": 1, "category": "visual"},
-        {"label": "Oversized", "count": 0, "category": "visual"},
-    ],
-    "summary": (
-        "Batch meets Grade A procurement thresholds. "
-        "Minor visible defects within tolerance."
-    ),
-}
-
-
 def _complete_analysis(inspection: store.StoredInspection) -> None:
+    try:
+        normalized = get_analysis_provider().analyze(inspection)
+    except Exception:
+        store.update_inspection(
+            inspection.id,
+            {"analysis_status": "failed", "status": "in_progress"},
+        )
+        return
     result = {
         "inspectionId": inspection.id,
-        **MOCK_RESULT_TEMPLATE,
-        "analyzedAt": store.utc_now_iso(),
+        "grade": normalized.grade,
+        "confidence": normalized.confidence,
+        "classification": normalized.classification,
+        "totalOnions": normalized.total_onions,
+        "modelName": normalized.model_name,
+        "defects": normalized.defects,
+        "summary": normalized.summary,
+        "analyzedAt": normalized.analyzed_at,
+        "healthyCount": normalized.healthy_count,
+        "rottenDamagedCount": normalized.rotten_damaged_count,
+        "sproutedCount": normalized.sprouted_count,
+        "uncertainCount": normalized.uncertain_count,
+        "annotatedImageUrl": normalized.annotated_image_url,
+        "annotatedImagePath": normalized.annotated_image_path,
+        "sizeEstimation": normalized.size_estimation,
+        "detections": normalized.detections,
     }
     store.save_analysis_result(inspection.id, result)
     store.update_inspection(
@@ -69,6 +70,13 @@ def _status_payload(inspection: store.StoredInspection) -> AnalysisStatusRespons
             status="processing",
             progress=progress,
             message=message,
+        )
+    if status == "failed":
+        return AnalysisStatusResponse(
+            inspectionId=inspection.id,
+            status="failed",
+            progress=0,
+            message="Analysis failed. Please try again.",
         )
     return AnalysisStatusResponse(
         inspectionId=inspection.id,

@@ -123,6 +123,14 @@ def _inspection_from_row(row: dict[str, Any]) -> StoredInspection:
             "defects": result_row["defects"],
             "summary": result_row["summary"],
             "analyzedAt": result_row["analyzed_at"],
+            "healthyCount": result_row.get("healthy_count"),
+            "rottenDamagedCount": result_row.get("rotten_damaged_count"),
+            "sproutedCount": result_row.get("sprouted_count"),
+            "uncertainCount": result_row.get("uncertain_count"),
+            "annotatedImageUrl": result_row.get("annotated_image_url"),
+            "annotatedImagePath": result_row.get("annotated_image_path"),
+            "sizeEstimation": result_row.get("size_estimation"),
+            "detections": result_row.get("detections"),
         }
     review_row = _first(review_response)
     review = None
@@ -255,6 +263,10 @@ def update_inspection(inspection_id: str, values: dict[str, Any]) -> None:
     _execute(_client().table("inspections").update(values).eq("id", inspection_id))
 
 
+def delete_inspection(inspection_id: str) -> None:
+    _execute(_client().table("inspections").delete().eq("id", inspection_id))
+
+
 def save_analysis_result(inspection_id: str, result: dict[str, Any]) -> None:
     row = {
         "inspection_id": inspection_id,
@@ -266,6 +278,14 @@ def save_analysis_result(inspection_id: str, result: dict[str, Any]) -> None:
         "defects": result["defects"],
         "summary": result["summary"],
         "analyzed_at": result["analyzedAt"],
+        "healthy_count": result.get("healthyCount"),
+        "rotten_damaged_count": result.get("rottenDamagedCount"),
+        "sprouted_count": result.get("sproutedCount"),
+        "uncertain_count": result.get("uncertainCount"),
+        "annotated_image_url": result.get("annotatedImageUrl"),
+        "annotated_image_path": result.get("annotatedImagePath"),
+        "size_estimation": result.get("sizeEstimation"),
+        "detections": result.get("detections"),
     }
     _execute(_client().table("analysis_results").upsert(row))
 

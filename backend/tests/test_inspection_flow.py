@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import storage, store
+from app.api import analysis as analysis_api
 from app.main import app
 
 client = TestClient(app)
@@ -232,7 +233,7 @@ def test_full_inspection_flow() -> None:
     assert result_body["confidence"] == 0.91
     assert result_body["classification"] == "grade_a"
     assert result_body["totalOnions"] == 48
-    assert result_body["modelName"] == "ONIVIS Vision Model"
+    assert result_body["modelName"] == "ONIVIS Demo Fallback"
     assert result_body["summary"]
     assert result_body["analyzedAt"]
     assert result_body["defects"][0]["label"] == "Sprouted"
@@ -426,6 +427,39 @@ def test_certificate_and_verify_errors() -> None:
     assert body["valid"] is False
     assert body["message"] == "Certificate not found or has been revoked."
     assert "certificate" not in body or body["certificate"] is None
+
+
+def test_delete_inspection_removes_storage_and_persisted_record() -> None:
+    inspection_id = _create_inspection()
+    _upload_image(inspection_id)
+
+    response = client.delete(f"/api/v1/inspections/{inspection_id}")
+
+    assert response.status_code == 204
+    assert client.get(f"/api/v1/inspections/{inspection_id}").status_code == 404
+    assert client.get("/api/v1/inspections").json() == []
+
+
+def test_delete_missing_inspection_returns_not_found() -> None:
+    response = client.delete("/api/v1/inspections/missing")
+    assert response.status_code == 404
+    assert response.json()["message"] == "Inspection not found"
+
+
+def test_analysis_provider_failure_persists_failed_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    inspection_id = _create_inspection()
+    _upload_image(inspection_id)
+
+    class FailingProvider:
+        def analyze(self, _inspection: Any) -> Any:
+            raise RuntimeError("model unavailable")
+
+    monkeypatch.setattr(analysis_api, "get_analysis_provider", lambda: FailingProvider())
+    assert client.post(f"/api/v1/inspections/{inspection_id}/analyze").status_code == 200
+    for _ in range(4):
+        response = client.get(f"/api/v1/inspections/{inspection_id}/analysis-status")
+    assert response.status_code == 200
+    assert response.json()["status"] == "failed"
 
 
 def test_unversioned_prefix_matches_frontend_default_base_url() -> None:

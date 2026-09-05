@@ -40,6 +40,14 @@ class InspectionResult(BaseModel):
     totalOnions: int | None = None
     modelName: str | None = None
     classification: str | None = None
+    healthyCount: int | None = None
+    rottenDamagedCount: int | None = None
+    sproutedCount: int | None = None
+    uncertainCount: int | None = None
+    annotatedImageUrl: str | None = None
+    annotatedImagePath: str | None = None
+    sizeEstimation: dict[str, object] | None = None
+    detections: list[dict[str, object]] | None = None
 
 
 class ReviewInput(BaseModel):
