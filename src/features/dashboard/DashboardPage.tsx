@@ -15,13 +15,41 @@ import {
   SectionHeader,
 } from '@/components/shared'
 import {
-  dashboardMetrics,
-  pendingReviewInspections,
-  recentInspections,
-} from '@/lib/demo-data'
+  useInspectionHistory,
+} from '@/features/inspections/hooks'
+import type { InspectionHistoryItem } from '@/types/inspection'
 import { ROUTES } from '@/lib/constants'
 
+function toCard(item: InspectionHistoryItem) {
+  return {
+    id: item.id,
+    batchId: item.variety,
+    centre: item.location,
+    dateTime: item.createdAt,
+    status: item.status === 'rejected' ? 'rejected' as const :
+      item.status === 'draft' || item.status === 'in_progress'
+        ? 'in_progress' as const
+        : 'completed' as const,
+    grade: item.grade ?? 'Pending',
+    sampleCount: item.totalOnions ?? 0,
+  }
+}
+
 export function DashboardPage() {
+  const historyQuery = useInspectionHistory()
+  const inspections = historyQuery.data ?? []
+  const completed = inspections.filter(
+    (item) => item.analysisStatus === 'completed' || item.status === 'completed' || item.status === 'reviewed',
+  )
+  const pendingReviews = inspections.filter(
+    (item) => item.analysisStatus === 'completed' && !item.reviewSubmitted && !item.certificateId,
+  )
+  const today = new Date().toDateString()
+  const inspectionsToday = inspections.filter(
+    (item) => new Date(item.createdAt).toDateString() === today,
+  ).length
+  const gradeACount = inspections.filter((item) => item.grade?.toLowerCase() === 'grade a').length
+
   return (
     <>
       <MobileHeader />
@@ -29,23 +57,23 @@ export function DashboardPage() {
         <div className="grid grid-cols-2 gap-3">
           <MetricCard
             label="Inspections Today"
-            value={dashboardMetrics.inspectionsToday}
+            value={inspectionsToday}
             icon={ClipboardCheck}
           />
           <MetricCard
-            label="Batches Audited"
-            value={dashboardMetrics.batchesAudited}
+            label="Total Inspections"
+            value={inspections.length}
             icon={Layers}
           />
           <MetricCard
-            label="Avg. Grade A"
-            value={dashboardMetrics.averageGradeA}
+            label="Completed"
+            value={completed.length}
             suffix="%"
             icon={TrendingUp}
           />
           <MetricCard
             label="Pending Reviews"
-            value={dashboardMetrics.pendingReviews}
+            value={pendingReviews.length}
             icon={AlertCircle}
           />
         </div>
@@ -60,11 +88,13 @@ export function DashboardPage() {
         <section className="space-y-3">
           <SectionHeader
             title="Pending Human Review"
-            description={`${pendingReviewInspections.length} batches awaiting inspector decision`}
+            description={`${pendingReviews.length} batches awaiting inspector decision`}
           />
-          {pendingReviewInspections.length > 0 ? (
-            pendingReviewInspections.map((inspection) => (
-              <InspectionCard key={inspection.id} inspection={inspection} />
+          {historyQuery.isPending ? (
+            <p className="text-xs text-muted-foreground">Loading inspections…</p>
+          ) : pendingReviews.length > 0 ? (
+            pendingReviews.map((inspection) => (
+              <InspectionCard key={inspection.id} inspection={toCard(inspection)} />
             ))
           ) : (
             <p className="text-xs text-muted-foreground">No pending reviews.</p>
@@ -76,10 +106,19 @@ export function DashboardPage() {
             title="Recent Inspections"
             description="Latest procurement centre audits"
           />
-          {recentInspections.map((inspection) => (
-            <InspectionCard key={inspection.id} inspection={inspection} />
+          {historyQuery.isError ? (
+            <p className="text-xs text-destructive" role="alert">Unable to load inspections.</p>
+          ) : inspections.slice(0, 5).map((inspection) => (
+            <InspectionCard key={inspection.id} inspection={toCard(inspection)} />
           ))}
+          {!historyQuery.isPending && !historyQuery.isError && inspections.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No inspections yet.</p>
+          ) : null}
         </section>
+
+        <p className="text-xs text-muted-foreground">
+          Grade A inspections: {gradeACount} of {inspections.length}
+        </p>
       </main>
     </>
   )

@@ -11,9 +11,7 @@ import {
 import { useInspectionResults } from '@/features/inspections/hooks'
 import {
   labVerificationDefects,
-  MODEL_NAME,
   VISUAL_DISCLAIMER,
-  visuallyAssessableDefects,
 } from '@/lib/demo-data'
 import { ROUTES } from '@/lib/constants'
 import { cn } from '@/lib/utils'
@@ -26,7 +24,7 @@ export function InspectionResultsPage() {
   const previewUrl = useInspectionDraftStore((s) => s.previewUrl)
   const results = resultsQuery.data
 
-  const classification = results?.classification ?? 'grade_a'
+  const classification = results?.classification
   const gradeLabels = {
     grade_a: 'Grade A',
     urs: 'URS',
@@ -85,7 +83,7 @@ export function InspectionResultsPage() {
               <div className="grid grid-cols-3 gap-2">
                 <ResultCard
                   label="Total Onions"
-                  value={results.totalOnions ?? 48}
+                  value={results.totalOnions ?? '—'}
                 />
                 <ResultCard
                   label="AI Confidence"
@@ -93,8 +91,7 @@ export function InspectionResultsPage() {
                 />
                 <ResultCard
                   label="Model"
-                  value={results.modelName ?? MODEL_NAME}
-                  sublabel="v2024.3"
+                  value={results.modelName ?? 'Unavailable'}
                 />
               </div>
 
@@ -111,14 +108,9 @@ export function InspectionResultsPage() {
                       Sample visualization
                     </div>
                   )}
-                  <div className="pointer-events-none absolute inset-0">
-                    <span className="absolute left-[20%] top-[30%] size-8 rounded-full border-2 border-success bg-success/20" />
-                    <span className="absolute left-[55%] top-[45%] size-6 rounded-full border-2 border-warning bg-warning/20" />
-                    <span className="absolute left-[35%] top-[60%] size-7 rounded-full border-2 border-destructive bg-destructive/20" />
-                  </div>
                 </div>
                 <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
-                  Detected regions highlighted for inspector review
+                  Detection overlays are available when the configured model returns them.
                 </p>
               </div>
 
@@ -129,13 +121,7 @@ export function InspectionResultsPage() {
                   Visually Assessable
                 </h3>
                 <div className="space-y-1.5">
-                  {(results.defects.length > 0
-                    ? results.defects.filter((d) => d.category !== 'lab')
-                    : visuallyAssessableDefects.map((label) => ({
-                        label,
-                        count: 0,
-                      }))
-                  ).map((defect) => (
+                  {results.defects.filter((d) => d.category !== 'lab').map((defect) => (
                     <div
                       key={defect.label}
                       className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2 text-sm"
@@ -146,6 +132,9 @@ export function InspectionResultsPage() {
                       </span>
                     </div>
                   ))}
+                  {results.defects.filter((d) => d.category !== 'lab').length === 0 ? (
+                    <p className="text-xs text-muted-foreground">No visual defect records returned.</p>
+                  ) : null}
                 </div>
               </section>
 

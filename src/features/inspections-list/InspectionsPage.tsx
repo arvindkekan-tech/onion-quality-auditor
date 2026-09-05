@@ -1,7 +1,7 @@
 import { ClipboardList } from 'lucide-react'
 
 import { EmptyState, InspectionCard, SectionHeader } from '@/components/shared'
-import { useInspectionHistory } from '@/features/inspections/hooks'
+import { useDeleteInspection, useInspectionHistory } from '@/features/inspections/hooks'
 import type { InspectionListItem } from '@/lib/demo-data'
 import type { InspectionHistoryItem } from '@/types/inspection'
 
@@ -42,7 +42,13 @@ function resumeHref(item: InspectionHistoryItem) {
 
 export function InspectionsPage() {
   const historyQuery = useInspectionHistory()
+  const deleteInspection = useDeleteInspection()
   const inspections = historyQuery.data?.map(toHistoryCard) ?? []
+
+  function handleDelete(inspectionId: string) {
+    if (!window.confirm('Delete this inspection and its uploaded images?')) return
+    deleteInspection.mutate(inspectionId)
+  }
 
   return (
     <main className="flex flex-1 flex-col gap-4 px-4 py-4 pt-5">
@@ -70,10 +76,17 @@ export function InspectionsPage() {
         />
       ) : (
         <div className="space-y-3">
+          {deleteInspection.isError ? (
+            <p className="text-sm text-destructive" role="alert">
+              Unable to delete inspection. Please try again.
+            </p>
+          ) : null}
           {inspections.map((inspection) => (
             <InspectionCard
               key={inspection.id}
               inspection={inspection}
+              onDelete={() => handleDelete(inspection.id)}
+              isDeleting={deleteInspection.isPending && deleteInspection.variables === inspection.id}
               href={resumeHref(historyQuery.data?.find((item) => item.id === inspection.id) ?? {
                 id: inspection.id,
                 variety: inspection.batchId,

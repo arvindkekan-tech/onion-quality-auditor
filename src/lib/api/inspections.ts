@@ -28,6 +28,10 @@ export async function getInspectionHistory(): Promise<InspectionHistoryItem[]> {
   return apiClient.get('/inspections', z.array(inspectionHistoryItemSchema))
 }
 
+export async function deleteInspection(inspectionId: string): Promise<void> {
+  await apiClient.delete(`/inspections/${inspectionId}`)
+}
+
 export async function createInspection(
   input: CreateInspectionInput,
 ): Promise<Inspection> {

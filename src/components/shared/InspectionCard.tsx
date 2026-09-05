@@ -1,4 +1,4 @@
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, Trash2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { StatusBadge } from '@/components/shared/StatusBadge'
@@ -8,6 +8,8 @@ import { cn } from '@/lib/utils'
 type InspectionCardProps = {
   inspection: InspectionListItem
   href?: string
+  onDelete?: () => void
+  isDeleting?: boolean
   className?: string
 }
 
@@ -20,12 +22,19 @@ function gradeToStatus(
   return 'info'
 }
 
-export function InspectionCard({ inspection, href, className }: InspectionCardProps) {
+export function InspectionCard({
+  inspection,
+  href,
+  onDelete,
+  isDeleting = false,
+  className,
+}: InspectionCardProps) {
   const content = (
     <div
       className={cn(
         'flex items-center gap-3 rounded-xl border border-border bg-card p-3 shadow-soft transition-colors',
         href && 'hover:bg-surface-muted',
+        onDelete && 'pr-12',
         className,
       )}
     >
@@ -50,15 +59,37 @@ export function InspectionCard({ inspection, href, className }: InspectionCardPr
           <StatusBadge status={gradeToStatus(inspection.grade)} label={inspection.grade} />
         </div>
       </div>
-      {href ? (
+      {href && !onDelete ? (
         <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
       ) : null}
     </div>
   )
 
+  const deleteButton = onDelete ? (
+    <button
+      type="button"
+      disabled={isDeleting}
+      onClick={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        onDelete()
+      }}
+      className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+      aria-label={`Delete inspection ${inspection.batchId}`}
+      title="Delete inspection"
+    >
+      <Trash2 className="size-4" aria-hidden />
+    </button>
+  ) : null
+
   if (href) {
-    return <Link to={href}>{content}</Link>
+    return (
+      <div className="relative">
+        <Link to={href}>{content}</Link>
+        {deleteButton}
+      </div>
+    )
   }
 
-  return content
+  return <div className="relative">{content}{deleteButton}</div>
 }

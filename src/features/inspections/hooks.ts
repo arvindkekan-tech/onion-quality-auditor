@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   checkImageQuality,
   createInspection,
+  deleteInspection,
   getInspectionHistory,
   getAnalysisStatus,
   getInspectionResults,
@@ -26,6 +27,16 @@ export function useInspectionHistory() {
   return useQuery({
     queryKey: inspectionKeys.history(),
     queryFn: getInspectionHistory,
+  })
+}
+
+export function useDeleteInspection() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (inspectionId: string) => deleteInspection(inspectionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: inspectionKeys.all })
+    },
   })
 }
 

@@ -68,4 +68,7 @@ export const apiClient = {
   patch<T>(path: string, body?: unknown, schema?: z.ZodType<T>) {
     return request<T>(path, { method: 'PATCH', body }, schema)
   },
+  delete<T = void>(path: string, schema?: z.ZodType<T>) {
+    return request<T>(path, { method: 'DELETE' }, schema)
+  },
 }

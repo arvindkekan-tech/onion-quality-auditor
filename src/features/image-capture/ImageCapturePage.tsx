@@ -1,4 +1,11 @@
-import { Camera, CheckCircle2, Circle, ImagePlus, X } from 'lucide-react'
+import {
+  AlertCircle,
+  Camera,
+  CheckCircle2,
+  Circle,
+  ImagePlus,
+  X,
+} from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -8,7 +15,7 @@ import { PrimaryButton, SecondaryButton } from '@/components/shared'
 import { useUploadImage } from '@/features/inspections/hooks'
 import { captureConditions } from '@/lib/demo-data'
 import { ROUTES } from '@/lib/constants'
-import { useCamera } from '@/hooks/useCamera'
+import { useCamera, type GuidanceStatus } from '@/hooks/useCamera'
 import { cn } from '@/lib/utils'
 import { useInspectionDraftStore } from '@/stores/inspectionDraftStore'
 
@@ -18,8 +25,15 @@ export function ImageCapturePage() {
   const uploadImage = useUploadImage(id)
   const { images, previewUrl, addImage, removeImage, clearImages } =
     useInspectionDraftStore()
-  const { videoRef, error, isActive, startCamera, stopCamera, capturePhoto } =
-    useCamera()
+  const {
+    videoRef,
+    error,
+    isActive,
+    startCamera,
+    stopCamera,
+    capturePhoto,
+    guidance,
+  } = useCamera()
   const [isUploading, setIsUploading] = useState(false)
   const hasImage = images.length > 0
 
@@ -108,21 +122,36 @@ export function ImageCapturePage() {
           ) : null}
 
           <div className="grid grid-cols-2 gap-2">
-            {captureConditions.map((condition, index) => {
-              const met = hasImage || (isActive && index < 3)
+            {captureConditions.map((condition) => {
+              const status =
+                condition.key === 'focus'
+                  ? guidance.sharpness
+                  : guidance[condition.key]
+              const isGood = status === 'good'
+              const isWarning = status === 'too-dark' ||
+                status === 'too-bright' ||
+                status === 'blurry' ||
+                status === 'low-coverage'
               return (
                 <div
                   key={condition.key}
                   className={cn(
                     'flex items-start gap-2 rounded-lg border p-2.5',
-                    met
+                    isGood
                       ? 'border-success/20 bg-success/5'
-                      : 'border-border bg-surface-muted',
+                      : isWarning
+                        ? 'border-warning/20 bg-accent'
+                        : 'border-border bg-surface-muted',
                   )}
                 >
-                  {met ? (
+                  {isGood ? (
                     <CheckCircle2
                       className="mt-0.5 size-4 shrink-0 text-success"
+                      aria-hidden
+                    />
+                  ) : isWarning ? (
+                    <AlertCircle
+                      className="mt-0.5 size-4 shrink-0 text-warning"
                       aria-hidden
                     />
                   ) : (
@@ -133,8 +162,12 @@ export function ImageCapturePage() {
                   )}
                   <div>
                     <p className="text-xs font-medium">{condition.label}</p>
-                    <p className="text-[10px] text-muted-foreground">
-                      {condition.description}
+                    <p className="text-[10px] text-muted-foreground">{condition.description}</p>
+                    <p className={cn(
+                      'text-[10px] font-medium',
+                      isGood ? 'text-success' : isWarning ? 'text-warning' : 'text-muted-foreground',
+                    )}>
+                      {guidanceLabel(status)}
                     </p>
                   </div>
                 </div>
@@ -197,8 +230,35 @@ export function ImageCapturePage() {
               </div>
             </div>
           )}
+
+          {!hasImage && isActive && (guidance.lighting !== 'good' || guidance.sharpness !== 'good' || guidance.coverage !== 'good') ? (
+            <p className="text-xs text-muted-foreground">
+              Guidance is advisory. Capture is available while the camera is active; improve failed checks when possible.
+            </p>
+          ) : null}
         </div>
       </InspectionStepLayout>
     </>
   )
+}
+
+function guidanceLabel(status: GuidanceStatus) {
+  switch (status) {
+    case 'checking':
+      return 'Checking…'
+    case 'good':
+      return 'Good'
+    case 'too-dark':
+      return 'Too dark'
+    case 'too-bright':
+      return 'Too bright'
+    case 'blurry':
+      return 'Blurry / steady camera'
+    case 'low-coverage':
+      return 'Too little sample coverage'
+    case 'manual':
+      return 'Manual check'
+    default:
+      return 'Unavailable'
+  }
 }

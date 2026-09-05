@@ -10,7 +10,7 @@ import {
   useAnalysisStatus,
   useStartAnalysis,
 } from '@/features/inspections/hooks'
-import { analysisSteps, MODEL_NAME } from '@/lib/demo-data'
+import { analysisSteps } from '@/lib/demo-data'
 import { ROUTES } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 
@@ -73,7 +73,9 @@ export function AiAnalysisPage() {
             <h2 className="text-lg font-semibold">
               {isComplete ? 'Analysis Complete' : 'Analysing Sample'}
             </h2>
-            <p className="mt-1 text-sm text-muted-foreground">{MODEL_NAME}</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Analysis provider configured on the backend
+            </p>
           </div>
 
           <div className="w-full space-y-2">
