@@ -91,10 +91,51 @@ def init_db() -> None:
                 sample_size INTEGER,
                 confidence REAL,
                 defect_summary TEXT,
-                audit_timeline TEXT
+                audit_timeline TEXT,
+                ai_grade TEXT,
+                officer_grade TEXT,
+                override_count INTEGER DEFAULT 0,
+                dual_assessment TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS onion_decisions (
+                id TEXT PRIMARY KEY,
+                inspection_id TEXT NOT NULL REFERENCES inspections(id) ON DELETE CASCADE,
+                onion_id TEXT NOT NULL,
+                image_id TEXT,
+                ai_class TEXT NOT NULL,
+                officer_class TEXT NOT NULL,
+                final_class TEXT NOT NULL,
+                ai_size TEXT,
+                officer_size TEXT,
+                final_size TEXT,
+                reason TEXT,
+                officer_name TEXT,
+                created_at TEXT NOT NULL
             );
             """
         )
+        # Migrate existing certificates table if columns are missing
+        for col_def in [
+            ("ai_grade", "TEXT"),
+            ("officer_grade", "TEXT"),
+            ("override_count", "INTEGER DEFAULT 0"),
+            ("dual_assessment", "TEXT"),
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE certificates ADD COLUMN {col_def[0]} {col_def[1]}")
+            except Exception:
+                pass
+        # Migrate existing analysis_results table if columns are missing
+        for col_def in [
+            ("images_results", "TEXT"),
+            ("ai_assessment", "TEXT"),
+            ("officer_assessment", "TEXT"),
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE analysis_results ADD COLUMN {col_def[0]} {col_def[1]}")
+            except Exception:
+                pass
 
 
 def _safe_json_loads(val: Any) -> Any:
@@ -174,6 +215,9 @@ def get_inspection(inspection_id: str) -> StoredInspection | None:
                 "gradeExplanation": res_row["grade_explanation"],
                 "attentionRequired": bool(res_row["attention_required"]),
                 "attentionReason": res_row["attention_reason"],
+                "imagesResults": _safe_json_loads(res_row["images_results"]) if "images_results" in res_row.keys() else None,
+                "aiAssessment": _safe_json_loads(res_row["ai_assessment"]) if "ai_assessment" in res_row.keys() else None,
+                "officerAssessment": _safe_json_loads(res_row["officer_assessment"]) if "officer_assessment" in res_row.keys() else None,
             }
 
         rev_row = conn.execute(
@@ -320,8 +364,9 @@ def save_analysis_result(inspection_id: str, result: dict[str, Any]) -> None:
                 model_name, defects, summary, analyzed_at, healthy_count,
                 rotten_damaged_count, sprouted_count, uncertain_count,
                 annotated_image_url, annotated_image_path, size_estimation, detections,
-                grade_explanation, attention_required, attention_reason
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                grade_explanation, attention_required, attention_reason,
+                images_results, ai_assessment, officer_assessment
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(inspection_id) DO UPDATE SET
                 grade = excluded.grade,
                 confidence = excluded.confidence,
@@ -341,7 +386,10 @@ def save_analysis_result(inspection_id: str, result: dict[str, Any]) -> None:
                 detections = excluded.detections,
                 grade_explanation = excluded.grade_explanation,
                 attention_required = excluded.attention_required,
-                attention_reason = excluded.attention_reason
+                attention_reason = excluded.attention_reason,
+                images_results = excluded.images_results,
+                ai_assessment = excluded.ai_assessment,
+                officer_assessment = excluded.officer_assessment
             """,
             (
                 inspection_id,
@@ -364,6 +412,9 @@ def save_analysis_result(inspection_id: str, result: dict[str, Any]) -> None:
                 result.get("gradeExplanation"),
                 1 if result.get("attentionRequired") else 0,
                 result.get("attentionReason"),
+                json.dumps(result["imagesResults"]) if result.get("imagesResults") else None,
+                json.dumps(result["aiAssessment"]) if result.get("aiAssessment") else None,
+                json.dumps(result["officerAssessment"]) if result.get("officerAssessment") else None,
             ),
         )
 
@@ -380,8 +431,9 @@ def save_review_and_certificate(
             INSERT OR REPLACE INTO certificates (
                 id, inspection_id, grade, issued_at, batch_label, qr_token,
                 inspector_name, batch_id, procurement_centre, specification,
-                sample_size, confidence, defect_summary, audit_timeline
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                sample_size, confidence, defect_summary, audit_timeline,
+                ai_grade, officer_grade, override_count, dual_assessment
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 certificate["id"],
@@ -398,6 +450,10 @@ def save_review_and_certificate(
                 certificate.get("confidence"),
                 certificate.get("defectSummary"),
                 json.dumps(certificate.get("auditTimeline")),
+                certificate.get("aiGrade"),
+                certificate.get("officerGrade") or certificate["grade"],
+                certificate.get("overrideCount", 0),
+                json.dumps(certificate.get("dualAssessment")) if certificate.get("dualAssessment") else None,
             ),
         )
         conn.execute(
@@ -482,6 +538,10 @@ def get_certificate(certificate_id: str) -> dict[str, Any] | None:
             "confidence": row["confidence"],
             "defectSummary": row["defect_summary"],
             "auditTimeline": _safe_json_loads(row["audit_timeline"]),
+            "aiGrade": row["ai_grade"] if "ai_grade" in row.keys() else None,
+            "officerGrade": row["officer_grade"] if "officer_grade" in row.keys() else row["grade"],
+            "overrideCount": row["override_count"] if "override_count" in row.keys() else 0,
+            "dualAssessment": _safe_json_loads(row["dual_assessment"]) if "dual_assessment" in row.keys() else None,
         }
 
 
@@ -508,4 +568,70 @@ def get_certificate_by_token(token: str) -> dict[str, Any] | None:
             "confidence": row["confidence"],
             "defectSummary": row["defect_summary"],
             "auditTimeline": _safe_json_loads(row["audit_timeline"]),
+            "aiGrade": row["ai_grade"] if "ai_grade" in row.keys() else None,
+            "officerGrade": row["officer_grade"] if "officer_grade" in row.keys() else row["grade"],
+            "overrideCount": row["override_count"] if "override_count" in row.keys() else 0,
+            "dualAssessment": _safe_json_loads(row["dual_assessment"]) if "dual_assessment" in row.keys() else None,
         }
+
+
+def save_onion_decisions(inspection_id: str, decisions: list[dict[str, Any]]) -> None:
+    if not decisions:
+        return
+    init_db()
+    from uuid import uuid4
+    from app.store import utc_now_iso
+    with _get_connection() as conn:
+        for d in decisions:
+            decision_id = d.get("id") or f"dec-{d.get('onionId', '')}-{uuid4().hex[:6]}"
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO onion_decisions (
+                    id, inspection_id, onion_id, image_id, ai_class,
+                    officer_class, final_class, ai_size, officer_size,
+                    final_size, reason, officer_name, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    decision_id,
+                    inspection_id,
+                    d.get("onionId", ""),
+                    d.get("imageId"),
+                    d.get("aiClass", "unknown"),
+                    d.get("officerClass", "unknown"),
+                    d.get("finalClass") or d.get("officerClass", "unknown"),
+                    d.get("aiSize"),
+                    d.get("officerSize"),
+                    d.get("finalSize") or d.get("officerSize"),
+                    d.get("reason"),
+                    d.get("officerName"),
+                    d.get("createdAt") or utc_now_iso(),
+                ),
+            )
+
+
+def get_onion_decisions(inspection_id: str) -> list[dict[str, Any]]:
+    init_db()
+    with _get_connection() as conn:
+        cursor = conn.execute(
+            "SELECT * FROM onion_decisions WHERE inspection_id = ? ORDER BY created_at ASC",
+            (inspection_id,),
+        )
+        return [
+            {
+                "id": row["id"],
+                "inspectionId": row["inspection_id"],
+                "onionId": row["onion_id"],
+                "imageId": row["image_id"],
+                "aiClass": row["ai_class"],
+                "officerClass": row["officer_class"],
+                "finalClass": row["final_class"],
+                "aiSize": row["ai_size"],
+                "officerSize": row["officer_size"],
+                "finalSize": row["final_size"],
+                "reason": row["reason"],
+                "officerName": row["officer_name"],
+                "createdAt": row["created_at"],
+            }
+            for row in cursor.fetchall()
+        ]

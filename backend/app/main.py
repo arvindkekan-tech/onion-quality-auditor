@@ -32,6 +32,11 @@ app.include_router(inspections_router)
 app.include_router(analysis_router)
 app.include_router(certificates_router)
 
+
+@app.get("/health", tags=["health"])
+def root_health() -> dict[str, str]:
+    return {"status": "ok", "service": "onivis-api"}
+
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 

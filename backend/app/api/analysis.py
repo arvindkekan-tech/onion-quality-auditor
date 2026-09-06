@@ -16,6 +16,21 @@ def _complete_analysis(inspection: store.StoredInspection) -> None:
             {"analysis_status": "failed", "status": "in_progress"},
         )
         return
+    ai_assessment = {
+        "grade": normalized.grade,
+        "totalOnions": normalized.total_onions,
+        "healthyCount": normalized.healthy_count,
+        "rottenDamagedCount": normalized.rotten_damaged_count,
+        "sproutedCount": normalized.sprouted_count,
+        "uncertainCount": normalized.uncertain_count,
+        "defectRatio": (
+            round(((normalized.rotten_damaged_count or 0) + (normalized.sprouted_count or 0)) / (normalized.total_onions or 1), 4)
+            if normalized.total_onions
+            else 0.0
+        ),
+        "confidence": normalized.confidence,
+        "explanation": getattr(normalized, "grade_explanation", None),
+    }
     result = {
         "inspectionId": inspection.id,
         "grade": normalized.grade,
@@ -37,6 +52,9 @@ def _complete_analysis(inspection: store.StoredInspection) -> None:
         "gradeExplanation": getattr(normalized, "grade_explanation", None),
         "attentionRequired": getattr(normalized, "attention_required", False),
         "attentionReason": getattr(normalized, "attention_reason", None),
+        "imagesResults": getattr(normalized, "images_results", None),
+        "aiAssessment": ai_assessment,
+        "officerAssessment": dict(ai_assessment),
     }
     store.save_analysis_result(inspection.id, result)
     store.update_inspection(

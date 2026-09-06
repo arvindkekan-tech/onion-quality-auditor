@@ -1,6 +1,11 @@
 from pydantic import BaseModel, ConfigDict
 
 
+class AuditEvent(BaseModel):
+    event: str
+    time: str
+
+
 class Certificate(BaseModel):
     model_config = ConfigDict(exclude_none=True)
 
@@ -17,11 +22,11 @@ class Certificate(BaseModel):
     sampleSize: int | None = None
     confidence: float | None = None
     defectSummary: str | None = None
-
-
-class AuditEvent(BaseModel):
-    event: str
-    time: str
+    auditTimeline: list[AuditEvent] | None = None
+    aiGrade: str | None = None
+    officerGrade: str | None = None
+    overrideCount: int = 0
+    dualAssessment: dict[str, object] | None = None
 
 
 class VerificationResult(BaseModel):

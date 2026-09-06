@@ -121,6 +121,9 @@ def _inspection_from_row(row: dict[str, Any]) -> StoredInspection:
             "gradeExplanation": result_row.get("grade_explanation"),
             "attentionRequired": bool(result_row.get("attention_required", False)),
             "attentionReason": result_row.get("attention_reason"),
+            "imagesResults": result_row.get("images_results"),
+            "aiAssessment": result_row.get("ai_assessment"),
+            "officerAssessment": result_row.get("officer_assessment"),
         }
     review_row = _first(review_response)
     review = None
@@ -312,6 +315,9 @@ def save_analysis_result(inspection_id: str, result: dict[str, Any]) -> None:
         "grade_explanation": result.get("gradeExplanation"),
         "attention_required": result.get("attentionRequired", False),
         "attention_reason": result.get("attentionReason"),
+        "images_results": result.get("imagesResults"),
+        "ai_assessment": result.get("aiAssessment"),
+        "officer_assessment": result.get("officerAssessment"),
     }
     _execute(_client().table("analysis_results").upsert(row))
 
@@ -332,6 +338,10 @@ def _certificate_from_row(row: dict[str, Any]) -> dict[str, Any]:
         "confidence": row.get("confidence"),
         "defectSummary": row.get("defect_summary"),
         "auditTimeline": row.get("audit_timeline"),
+        "aiGrade": row.get("ai_grade"),
+        "officerGrade": row.get("officer_grade") or row["grade"],
+        "overrideCount": row.get("override_count", 0),
+        "dualAssessment": row.get("dual_assessment"),
     }
 
 
@@ -358,6 +368,10 @@ def save_review_and_certificate(
         "confidence": certificate.get("confidence"),
         "defect_summary": certificate.get("defectSummary"),
         "audit_timeline": certificate.get("auditTimeline"),
+        "ai_grade": certificate.get("aiGrade"),
+        "officer_grade": certificate.get("officerGrade") or certificate["grade"],
+        "override_count": certificate.get("overrideCount", 0),
+        "dual_assessment": certificate.get("dualAssessment"),
     }
     _execute(_client().table("certificates").insert(certificate_row))
     try:
@@ -447,3 +461,60 @@ def get_certificate_by_token(token: str) -> dict[str, Any] | None:
     )
     row = _first(response)
     return _certificate_from_row(row) if row else None
+
+
+def save_onion_decisions(inspection_id: str, decisions: list[dict[str, Any]]) -> None:
+    if not decisions:
+        return
+    if not _is_supabase_active():
+        local_store.save_onion_decisions(inspection_id, decisions)
+        return
+    rows = [
+        {
+            "id": d.get("id") or f"dec-{d.get('onionId', '')}-{uuid4().hex[:6]}",
+            "inspection_id": inspection_id,
+            "onion_id": d.get("onionId", ""),
+            "image_id": d.get("imageId"),
+            "ai_class": d.get("aiClass", "unknown"),
+            "officer_class": d.get("officerClass", "unknown"),
+            "final_class": d.get("finalClass") or d.get("officerClass", "unknown"),
+            "ai_size": d.get("aiSize"),
+            "officer_size": d.get("officerSize"),
+            "final_size": d.get("finalSize") or d.get("officerSize"),
+            "reason": d.get("reason"),
+            "officer_name": d.get("officerName"),
+            "created_at": d.get("createdAt") or utc_now_iso(),
+        }
+        for d in decisions
+    ]
+    _execute(_client().table("onion_decisions").upsert(rows))
+
+
+def get_onion_decisions(inspection_id: str) -> list[dict[str, Any]]:
+    if not _is_supabase_active():
+        return local_store.get_onion_decisions(inspection_id)
+    response = _execute(
+        _client()
+        .table("onion_decisions")
+        .select("*")
+        .eq("inspection_id", inspection_id)
+        .order("created_at")
+    )
+    return [
+        {
+            "id": r["id"],
+            "inspectionId": r["inspection_id"],
+            "onionId": r["onion_id"],
+            "imageId": r.get("image_id"),
+            "aiClass": r["ai_class"],
+            "officerClass": r["officer_class"],
+            "finalClass": r["final_class"],
+            "aiSize": r.get("ai_size"),
+            "officerSize": r.get("officer_size"),
+            "finalSize": r.get("final_size"),
+            "reason": r.get("reason"),
+            "officerName": r.get("officer_name"),
+            "createdAt": r["created_at"],
+        }
+        for r in response.data or []
+    ]

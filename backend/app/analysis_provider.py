@@ -1,4 +1,4 @@
-﻿"""Analysis provider boundary for demo and real ONIVIS model adapters."""
+"""Analysis provider boundary for demo and real ONIVIS model adapters."""
 
 from __future__ import annotations
 
@@ -38,6 +38,7 @@ class NormalizedAnalysisResult:
     grade_explanation: str | None = None
     attention_required: bool = False
     attention_reason: str | None = None
+    images_results: list[dict[str, Any]] | None = None
 
 
 class AnalysisProvider(Protocol):
@@ -49,6 +50,22 @@ class DemoFallbackProvider:
     """Explicit deterministic fallback for development/testing only."""
 
     def analyze(self, inspection: StoredInspection) -> NormalizedAnalysisResult:
+        images_count = len(inspection.images) if inspection.images else 1
+        per_img = 48 // images_count
+        images_results = [
+            {
+                "imageId": img.id,
+                "filename": img.filename,
+                "url": img.url,
+                "annotatedImageUrl": img.url,
+                "totalOnions": per_img,
+                "healthyCount": int(per_img * 0.87),
+                "rottenDamagedCount": int(per_img * 0.06),
+                "sproutedCount": int(per_img * 0.04),
+                "uncertainCount": int(per_img * 0.03),
+            }
+            for img in (inspection.images or [])
+        ]
         return NormalizedAnalysisResult(
             grade="Grade A",
             confidence=0.91,
@@ -73,6 +90,7 @@ class DemoFallbackProvider:
             grade_explanation="Grade A — defect ratio 10.4% (<= 15.0% demo tolerance)",
             attention_required=False,
             attention_reason=None,
+            images_results=images_results,
         )
 
 
@@ -96,10 +114,9 @@ class RealMLProvider:
             settings.window_height_mm,
         )
 
-    def _download_image_bytes(self, inspection: StoredInspection) -> bytes:
-        image = inspection.images[-1] if inspection.images else None
-        if image is None:
-            raise ValueError("Inspection contains no uploaded image for analysis.")
+    def _download_single_image_bytes(self, image: StoredImage) -> bytes:
+        if not image.storage_path and not image.url:
+            return np.zeros((240, 320, 3), dtype=np.uint8).tobytes()
 
         if image.storage_path:
             local_bytes = get_local_image_bytes(image.storage_path)
@@ -124,7 +141,7 @@ class RealMLProvider:
             except Exception:
                 pass
 
-        raise ValueError("Unable to fetch inspection image bytes from storage.")
+        raise ValueError(f"Unable to fetch image bytes for image {image.id} from storage.")
 
     def _dominant_class(self, summary: dict[str, int]) -> str:
         ranked = [
@@ -136,104 +153,164 @@ class RealMLProvider:
         return max(ranked, key=lambda item: item[1])[0] if ranked else "uncertain"
 
     def analyze(self, inspection: StoredInspection) -> NormalizedAnalysisResult:
-        image_bytes: bytes | None = None
-        if inspection.images:
-            image_bytes = self._download_image_bytes(inspection)
-        elif getattr(self, "_engine", None) is not None:
-            image_bytes = np.zeros((240, 320, 3), dtype=np.uint8).tobytes()
-        else:
-            raise ValueError("No inspection image is available for real ML analysis.")
+        target_images = inspection.images
+        if not target_images:
+            if getattr(self, "_engine", None) is not None:
+                from app.store_types import StoredImage
+                target_images = [
+                    StoredImage(
+                        id="dummy-img",
+                        uploaded_at=utc_now_iso(),
+                        filename="dummy.jpg",
+                        content_type="image/jpeg",
+                        storage_path="",
+                        url=None,
+                    )
+                ]
+            else:
+                raise ValueError("No inspection image is available for real ML analysis.")
 
         if self._engine is None:
             raise RuntimeError("Real ML analysis is unavailable because the inference engine is not initialized.")
 
-        image_array = np.frombuffer(image_bytes, dtype=np.uint8)
-        image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
-        if image is None:
-            if not inspection.images:
-                image = np.zeros((240, 320, 3), dtype=np.uint8)
-            else:
-                raise ValueError("Uploaded image could not be decoded for ML analysis.")
+        total_healthy = 0
+        total_rotten = 0
+        total_sprouted = 0
+        total_uncertain = 0
+        total_onions = 0
+        all_detections: list[dict[str, Any]] = []
+        all_confidences: list[float] = []
+        all_diameters: list[float] = []
+        images_results: list[dict[str, Any]] = []
 
-        if not getattr(self._engine, "is_ready", lambda: True)():
-            if not inspection.images:
-                result = self._engine.predict(image)
-            else:
-                raise RuntimeError("Real ML inference engine is not ready for analysis.")
-        else:
-            result = self._engine.predict(image)
+        global_onion_counter = 1
 
-        size_estimator = getattr(self, "_size_estimator", None)
-        if size_estimator is None:
-            size_estimation = getattr(self, "_size_estimation", None)
-        else:
-            size_estimation = size_estimator.estimate(
-                detections=result.get("detections", []),
-                image_width_px=result.get("image_width", 0),
-                image_height_px=result.get("image_height", 0),
-            )
+        for image_obj in target_images:
+            img_bytes = self._download_single_image_bytes(image_obj)
+            img_arr = np.frombuffer(img_bytes, dtype=np.uint8)
+            cv_img = cv2.imdecode(img_arr, cv2.IMREAD_COLOR)
+            if cv_img is None:
+                cv_img = np.zeros((240, 320, 3), dtype=np.uint8)
 
-        summary = result.get("summary", {})
-        healthy = int(summary.get("healthy", 0))
-        rotten = int(summary.get("rotten_damaged", 0))
-        sprouted = int(summary.get("sprouted", 0))
-        uncertain = int(summary.get("uncertain", 0))
-        total_onions = int(result.get("total_onions", 0))
+            pred_result = self._engine.predict(cv_img)
+            summary = pred_result.get("summary", {})
+            img_healthy = int(summary.get("healthy", 0))
+            img_rotten = int(summary.get("rotten_damaged", 0))
+            img_sprouted = int(summary.get("sprouted", 0))
+            img_uncertain = int(summary.get("uncertain", 0))
+            img_total = int(pred_result.get("total_onions", 0))
 
-        detections = result.get("detections", [])
-        detection_confidences = [
-            float(item.get("detection_confidence", 0.0)) for item in detections if item.get("detection_confidence") is not None
-        ]
-        classification_confidences = [
-            float(item.get("classification_confidence", 0.0)) for item in detections if item.get("classification_confidence") is not None
-        ]
-        average_confidence = 0.0
-        if detection_confidences or classification_confidences:
-            values = detection_confidences or classification_confidences
-            average_confidence = float(sum(values) / len(values))
+            total_healthy += img_healthy
+            total_rotten += img_rotten
+            total_sprouted += img_sprouted
+            total_uncertain += img_uncertain
+            total_onions += img_total
+
+            size_estimator = getattr(self, "_size_estimator", None)
+            img_detections = pred_result.get("detections", [])
+            if size_estimator is not None:
+                size_estimator.estimate(
+                    detections=img_detections,
+                    image_width_px=pred_result.get("image_width", 0),
+                    image_height_px=pred_result.get("image_height", 0),
+                )
+
+            annotated_image_bytes = pred_result.get("annotated_image")
+            annotated_path = None
+            annotated_url = None
+            if annotated_image_bytes:
+                annotation_id = f"annot-{inspection.id}-{image_obj.id}"
+                safe_name = f"{inspection.id}-{image_obj.id}-annotated.jpg"
+                try:
+                    annotated_path, annotated_url = upload_image(
+                        inspection.id,
+                        annotation_id,
+                        safe_name,
+                        annotated_image_bytes,
+                        "image/jpeg",
+                    )
+                except Exception:
+                    pass
+
+            for d in img_detections:
+                d_copy = dict(d)
+                d_copy["image_id"] = image_obj.id
+                d_copy["onion_id"] = f"{image_obj.id}-onion-{d_copy.get('id', global_onion_counter)}"
+                d_copy["display_label"] = global_onion_counter
+                global_onion_counter += 1
+                if d_copy.get("detection_confidence") is not None:
+                    all_confidences.append(float(d_copy["detection_confidence"]))
+                elif d_copy.get("classification_confidence") is not None:
+                    all_confidences.append(float(d_copy["classification_confidence"]))
+                if d_copy.get("estimated_diameter_mm"):
+                    all_diameters.append(float(d_copy["estimated_diameter_mm"]))
+                all_detections.append(d_copy)
+
+            images_results.append({
+                "imageId": image_obj.id,
+                "filename": image_obj.filename,
+                "url": image_obj.url,
+                "annotatedImageUrl": annotated_url,
+                "totalOnions": img_total,
+                "healthyCount": img_healthy,
+                "rottenDamagedCount": img_rotten,
+                "sproutedCount": img_sprouted,
+                "uncertainCount": img_uncertain,
+            })
+
+        average_confidence = float(sum(all_confidences) / len(all_confidences)) if all_confidences else 0.0
 
         defect_items = [
-            {"label": "healthy", "count": healthy, "category": "classification"},
-            {"label": "rotten_damaged", "count": rotten, "category": "classification"},
-            {"label": "sprouted", "count": sprouted, "category": "classification"},
-            {"label": "uncertain", "count": uncertain, "category": "classification"},
+            {"label": "healthy", "count": total_healthy, "category": "classification"},
+            {"label": "rotten_damaged", "count": total_rotten, "category": "classification"},
+            {"label": "sprouted", "count": total_sprouted, "category": "classification"},
+            {"label": "uncertain", "count": total_uncertain, "category": "classification"},
         ]
 
-        dominant_class = self._dominant_class(summary) if total_onions > 0 else "uncertain"
+        overall_summary = {
+            "healthy": total_healthy,
+            "rotten_damaged": total_rotten,
+            "sprouted": total_sprouted,
+            "uncertain": total_uncertain,
+        }
+        dominant_class = self._dominant_class(overall_summary) if total_onions > 0 else "uncertain"
 
-        # Calculate isolated commercial grade
         grade_result = calculate_commercial_grade(
             total_onions=total_onions,
-            healthy_count=healthy,
-            rotten_damaged_count=rotten,
-            sprouted_count=sprouted,
-            uncertain_count=uncertain,
+            healthy_count=total_healthy,
+            rotten_damaged_count=total_rotten,
+            sprouted_count=total_sprouted,
+            uncertain_count=total_uncertain,
             average_confidence=average_confidence,
         )
 
-        annotated_image_bytes = result.get("annotated_image")
-        annotated_path = None
-        annotated_url = getattr(self, "_annotated_image_url", None)
-        if annotated_image_bytes and not annotated_url:
-            annotation_id = f"annot-{inspection.id}-{len(inspection.images)}"
-            safe_name = f"{inspection.id}-annotated.jpg"
-            try:
-                annotated_path, annotated_url = upload_image(
-                    inspection.id,
-                    annotation_id,
-                    safe_name,
-                    annotated_image_bytes,
-                    "image/jpeg",
-                )
-            except Exception:
-                pass
+        size_estimation = getattr(self, "_size_estimation", None)
+        if size_estimation is None and all_diameters:
+            size_estimation = {
+                "average_diameter_mm": round(sum(all_diameters) / len(all_diameters), 2),
+                "minimum_diameter_mm": round(min(all_diameters), 2),
+                "maximum_diameter_mm": round(max(all_diameters), 2),
+                "sample_count": len(all_diameters),
+                "calibration": {
+                    "window_width_mm": settings.window_width_mm,
+                    "window_height_mm": settings.window_height_mm,
+                },
+            }
+
+        primary_annotated_url = getattr(self, "_annotated_image_url", None)
+        primary_annotated_path = None
+        if not primary_annotated_url and images_results:
+            for ir in images_results:
+                if ir.get("annotatedImageUrl"):
+                    primary_annotated_url = ir["annotatedImageUrl"]
+                    break
 
         if total_onions == 0:
             analysis_summary = "No onions detected. Please recapture with sufficient sample coverage."
         else:
             analysis_summary = (
-                f"Detected {total_onions} onions: "
-                f"healthy={healthy}, rotten_damaged={rotten}, sprouted={sprouted}, uncertain={uncertain}. "
+                f"Detected {total_onions} onions across {len(images_results)} image(s): "
+                f"healthy={total_healthy}, rotten_damaged={total_rotten}, sprouted={total_sprouted}, uncertain={total_uncertain}. "
                 f"Commercial assessment: {grade_result.explanation}."
             )
 
@@ -246,17 +323,18 @@ class RealMLProvider:
             summary=analysis_summary,
             model_name="YOLO Onion Detection + YOLO Classification",
             analyzed_at=utc_now_iso(),
-            detections=detections,
-            healthy_count=healthy,
-            rotten_damaged_count=rotten,
-            sprouted_count=sprouted,
-            uncertain_count=uncertain,
-            annotated_image_url=annotated_url,
-            annotated_image_path=annotated_path,
+            detections=all_detections,
+            healthy_count=total_healthy,
+            rotten_damaged_count=total_rotten,
+            sprouted_count=total_sprouted,
+            uncertain_count=total_uncertain,
+            annotated_image_url=primary_annotated_url,
+            annotated_image_path=primary_annotated_path,
             size_estimation=size_estimation,
             grade_explanation=grade_result.explanation,
             attention_required=grade_result.attention_required,
             attention_reason=grade_result.attention_reason,
+            images_results=images_results,
         )
 
 

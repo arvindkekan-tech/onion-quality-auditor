@@ -1,6 +1,15 @@
 from fastapi import APIRouter, HTTPException, UploadFile
 
-from app.schemas.analysis import ImageQualityResult, QualityCheckItem, ReviewInput, ReviewResponse
+from app.grading import calculate_commercial_grade
+from app.schemas.analysis import (
+    ImageQualityResult,
+    OnionDecisionResponse,
+    QualityCheckItem,
+    RecalculateRequest,
+    RecalculateResponse,
+    ReviewInput,
+    ReviewResponse,
+)
 from app.schemas.inspection import (
     InspectionCreate,
     InspectionHistoryResponse,
@@ -206,6 +215,114 @@ def check_image_quality(inspection_id: str, image_id: str) -> ImageQualityResult
     )
 
 
+def _compute_officer_metrics(
+    result: dict,
+    decisions: list | None,
+    override_grade: str | None = None,
+) -> tuple[dict, str, int]:
+    ai_total = int(result.get("totalOnions") or 0)
+    ai_healthy = int(result.get("healthyCount") or 0)
+    ai_rotten = int(result.get("rottenDamagedCount") or 0)
+    ai_sprouted = int(result.get("sproutedCount") or 0)
+    ai_uncertain = int(result.get("uncertainCount") or 0)
+    ai_conf = float(result.get("confidence") or 0.0)
+
+    if not decisions:
+        officer_grade = override_grade or result.get("grade") or "Grade A"
+        defects = ai_rotten + ai_sprouted
+        ratio = round(defects / ai_total, 4) if ai_total > 0 else 0.0
+        metrics = {
+            "grade": officer_grade,
+            "totalOnions": ai_total,
+            "healthyCount": ai_healthy,
+            "rottenDamagedCount": ai_rotten,
+            "sproutedCount": ai_sprouted,
+            "uncertainCount": ai_uncertain,
+            "defectRatio": ratio,
+            "confidence": ai_conf,
+            "overrideCount": 0,
+        }
+        return metrics, officer_grade, 0
+
+    detections = result.get("detections") or []
+    decision_map = {
+        (d.onionId if hasattr(d, "onionId") else d.get("onionId")): d
+        for d in decisions
+    }
+
+    if detections:
+        officer_healthy = 0
+        officer_rotten = 0
+        officer_sprouted = 0
+        officer_uncertain = 0
+        for det in detections:
+            onion_id = det.get("onion_id") or str(det.get("id"))
+            override = decision_map.get(onion_id)
+            if override:
+                final_cls = override.officerClass if hasattr(override, "officerClass") else override.get("officerClass")
+            else:
+                final_cls = det.get("final_class") or det.get("class_name") or "uncertain"
+
+            if final_cls == "healthy":
+                officer_healthy += 1
+            elif final_cls == "rotten_damaged":
+                officer_rotten += 1
+            elif final_cls == "sprouted":
+                officer_sprouted += 1
+            else:
+                officer_uncertain += 1
+        officer_total = officer_healthy + officer_rotten + officer_sprouted + officer_uncertain
+    else:
+        officer_healthy = ai_healthy
+        officer_rotten = ai_rotten
+        officer_sprouted = ai_sprouted
+        officer_uncertain = ai_uncertain
+        for d in decisions:
+            ai_cls = d.aiClass if hasattr(d, "aiClass") else d.get("aiClass")
+            off_cls = d.officerClass if hasattr(d, "officerClass") else d.get("officerClass")
+            if ai_cls == "healthy":
+                officer_healthy = max(0, officer_healthy - 1)
+            elif ai_cls == "rotten_damaged":
+                officer_rotten = max(0, officer_rotten - 1)
+            elif ai_cls == "sprouted":
+                officer_sprouted = max(0, officer_sprouted - 1)
+            elif ai_cls == "uncertain":
+                officer_uncertain = max(0, officer_uncertain - 1)
+
+            if off_cls == "healthy":
+                officer_healthy += 1
+            elif off_cls == "rotten_damaged":
+                officer_rotten += 1
+            elif off_cls == "sprouted":
+                officer_sprouted += 1
+            elif off_cls == "uncertain":
+                officer_uncertain += 1
+        officer_total = officer_healthy + officer_rotten + officer_sprouted + officer_uncertain
+
+    calc_res = calculate_commercial_grade(
+        total_onions=officer_total,
+        healthy_count=officer_healthy,
+        rotten_damaged_count=officer_rotten,
+        sprouted_count=officer_sprouted,
+        uncertain_count=officer_uncertain,
+        average_confidence=ai_conf,
+    )
+    final_grade = override_grade or calc_res.grade
+    metrics = {
+        "grade": final_grade,
+        "totalOnions": officer_total,
+        "healthyCount": officer_healthy,
+        "rottenDamagedCount": officer_rotten,
+        "sproutedCount": officer_sprouted,
+        "uncertainCount": officer_uncertain,
+        "defectRatio": calc_res.defect_ratio,
+        "confidence": ai_conf,
+        "overrideCount": len(decisions),
+        "explanation": calc_res.explanation,
+    }
+    return metrics, final_grade, len(decisions)
+
+
 @router.patch("/{inspection_id}/review", response_model=ReviewResponse)
 def submit_review(inspection_id: str, payload: ReviewInput) -> ReviewResponse:
     inspection = _require_inspection(inspection_id)
@@ -215,39 +332,75 @@ def submit_review(inspection_id: str, payload: ReviewInput) -> ReviewResponse:
             detail="Results not available yet. Complete analysis first.",
         )
 
+    result = inspection.result or {}
+    metrics, final_grade, override_count = _compute_officer_metrics(
+        result,
+        payload.onionDecisions,
+        payload.overrideGrade,
+    )
+
+    if payload.onionDecisions:
+        store.save_onion_decisions(
+            inspection_id,
+            [d.model_dump() for d in payload.onionDecisions],
+        )
+
+    # Update officer assessment in inspection result
+    result["officerAssessment"] = metrics
+    store.save_analysis_result(inspection_id, result)
+
     if payload.approved:
         certificate_id = store.new_id("cert")
         issued_at = store.utc_now_iso()
-        result = inspection.result or {}
-        grade = payload.overrideGrade or result.get("grade") or "Grade A"
         qr_token = f"qr-{certificate_id}"
         analyzed_at = result.get("analyzedAt") or issued_at
+
+        timeline_event = (
+            f"Human review approved ({override_count} overrides)"
+            if override_count > 0
+            else "Human review approved"
+        )
+
         certificate = {
             "id": certificate_id,
             "inspectionId": inspection_id,
-            "grade": grade,
+            "grade": final_grade,
             "issuedAt": issued_at,
             "batchLabel": f"{inspection.variety} — {inspection.location}",
             "qrToken": qr_token,
             "inspectorName": "Rajesh Patil",
             "procurementCentre": inspection.location,
             "specification": inspection.variety,
-            "sampleSize": result.get("totalOnions"),
+            "sampleSize": metrics.get("totalOnions") or result.get("totalOnions"),
             "confidence": result.get("confidence"),
-            "defectSummary": payload.notes or result.get("summary"),
+            "defectSummary": payload.notes or metrics.get("explanation") or result.get("summary"),
             "auditTimeline": [
                 {"event": "Inspection completed", "time": inspection.created_at},
                 {"event": "AI analysis verified", "time": analyzed_at},
-                {"event": "Human review approved", "time": issued_at},
+                {"event": timeline_event, "time": issued_at},
                 {"event": "Certificate issued", "time": issued_at},
             ],
+            "aiGrade": result.get("grade"),
+            "officerGrade": final_grade,
+            "overrideCount": override_count,
+            "dualAssessment": {
+                "ai": result.get("aiAssessment") or {
+                    "grade": result.get("grade"),
+                    "totalOnions": result.get("totalOnions"),
+                    "healthyCount": result.get("healthyCount"),
+                    "rottenDamagedCount": result.get("rottenDamagedCount"),
+                    "sproutedCount": result.get("sproutedCount"),
+                    "uncertainCount": result.get("uncertainCount"),
+                },
+                "officer": metrics,
+            },
         }
         store.save_review_and_certificate(
             inspection_id,
             {
                 "approved": True,
                 "notes": payload.notes,
-                "overrideGrade": payload.overrideGrade,
+                "overrideGrade": final_grade,
             },
             certificate,
         )
@@ -256,6 +409,9 @@ def submit_review(inspection_id: str, payload: ReviewInput) -> ReviewResponse:
             certificateId=certificate_id,
             approved=True,
             notes=payload.notes,
+            overrideGrade=final_grade,
+            overrideCount=override_count,
+            finalGrade=final_grade,
         )
     else:
         store.save_review_rejection(
@@ -271,4 +427,47 @@ def submit_review(inspection_id: str, payload: ReviewInput) -> ReviewResponse:
             certificateId=None,
             approved=False,
             notes=payload.notes,
+            overrideGrade="Rejected",
+            overrideCount=override_count,
+            finalGrade="Rejected",
         )
+
+
+@router.post("/{inspection_id}/recalculate", response_model=RecalculateResponse)
+def recalculate_inspection(
+    inspection_id: str,
+    payload: RecalculateRequest,
+) -> RecalculateResponse:
+    inspection = _require_inspection(inspection_id)
+    if inspection.result is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Results not available for recalculation.",
+        )
+    metrics, final_grade, count = _compute_officer_metrics(
+        inspection.result,
+        payload.onionDecisions,
+    )
+    total = metrics["totalOnions"]
+    return RecalculateResponse(
+        totalOnions=total,
+        healthyCount=metrics["healthyCount"],
+        rottenDamagedCount=metrics["rottenDamagedCount"],
+        sproutedCount=metrics["sproutedCount"],
+        uncertainCount=metrics["uncertainCount"],
+        defectRatio=metrics["defectRatio"],
+        healthyPct=round((metrics["healthyCount"] / total) * 100, 1) if total else 0.0,
+        rottenPct=round((metrics["rottenDamagedCount"] / total) * 100, 1) if total else 0.0,
+        sproutedPct=round((metrics["sproutedCount"] / total) * 100, 1) if total else 0.0,
+        uncertainPct=round((metrics["uncertainCount"] / total) * 100, 1) if total else 0.0,
+        grade=final_grade,
+        gradeExplanation=metrics.get("explanation") or f"Officer grade: {final_grade}",
+        overrideCount=count,
+    )
+
+
+@router.get("/{inspection_id}/decisions", response_model=list[OnionDecisionResponse])
+def get_inspection_decisions(inspection_id: str) -> list[OnionDecisionResponse]:
+    _require_inspection(inspection_id)
+    decisions = store.get_onion_decisions(inspection_id)
+    return [OnionDecisionResponse.model_validate(d) for d in decisions]
