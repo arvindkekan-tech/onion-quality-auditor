@@ -1,4 +1,4 @@
-﻿"""Common types and dataclasses for inspection persistence."""
+"""Common types and dataclasses for inspection persistence."""
 
 from __future__ import annotations
 
@@ -33,3 +33,4 @@ class StoredInspection:
     result: dict[str, Any] | None = None
     review: dict[str, Any] | None = None
     certificate: dict[str, Any] | None = None
+    user_id: str | None = None

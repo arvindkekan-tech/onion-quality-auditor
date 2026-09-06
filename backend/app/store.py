@@ -149,6 +149,7 @@ def _inspection_from_row(row: dict[str, Any]) -> StoredInspection:
         result=result,
         review=review,
         certificate=certificate,
+        user_id=row.get("user_id"),
     )
 
 
@@ -164,7 +165,13 @@ def _get_inspection_row(inspection_id: str) -> dict[str, Any] | None:
 
 
 def create_inspection(
-    *, id: str, variety: str, weight_kg: float, location: str, created_at: str
+    *,
+    id: str,
+    variety: str,
+    weight_kg: float,
+    location: str,
+    created_at: str,
+    user_id: str | None = None,
 ) -> StoredInspection:
     if not _is_supabase_active():
         return local_store.create_inspection(
@@ -173,6 +180,7 @@ def create_inspection(
             weight_kg=weight_kg,
             location=location,
             created_at=created_at,
+            user_id=user_id,
         )
     row = {
         "id": id,
@@ -183,6 +191,7 @@ def create_inspection(
         "status": "draft",
         "analysis_status": None,
         "analysis_poll_count": 0,
+        "user_id": user_id,
     }
     response = _execute(_client().table("inspections").insert(row))
     created = _first(response)
@@ -191,22 +200,24 @@ def create_inspection(
     return _inspection_from_row(created)
 
 
-def get_inspection(inspection_id: str) -> StoredInspection | None:
+def get_inspection(inspection_id: str, user_id: str | None = None) -> StoredInspection | None:
     if not _is_supabase_active():
-        return local_store.get_inspection(inspection_id)
+        return local_store.get_inspection(inspection_id, user_id=user_id)
     row = _get_inspection_row(inspection_id)
-    return _inspection_from_row(row) if row else None
+    if not row:
+        return None
+    if user_id is not None and row.get("user_id") and row.get("user_id") != user_id:
+        return None
+    return _inspection_from_row(row)
 
 
-def list_inspections() -> list[StoredInspection]:
+def list_inspections(user_id: str | None = None) -> list[StoredInspection]:
     if not _is_supabase_active():
-        return local_store.list_inspections()
-    response = _execute(
-        _client()
-        .table("inspections")
-        .select("*")
-        .order("created_at", desc=True)
-    )
+        return local_store.list_inspections(user_id=user_id)
+    query = _client().table("inspections").select("*")
+    if user_id is not None:
+        query = query.eq("user_id", user_id)
+    response = _execute(query.order("created_at", desc=True))
     return [_inspection_from_row(row) for row in response.data or []]
 
 
@@ -283,11 +294,14 @@ def update_inspection(inspection_id: str, values: dict[str, Any]) -> None:
     _execute(_client().table("inspections").update(values).eq("id", inspection_id))
 
 
-def delete_inspection(inspection_id: str) -> None:
+def delete_inspection(inspection_id: str, user_id: str | None = None) -> None:
     if not _is_supabase_active():
-        local_store.delete_inspection(inspection_id)
+        local_store.delete_inspection(inspection_id, user_id=user_id)
         return
-    _execute(_client().table("inspections").delete().eq("id", inspection_id))
+    query = _client().table("inspections").delete().eq("id", inspection_id)
+    if user_id is not None:
+        query = query.eq("user_id", user_id)
+    _execute(query)
 
 
 def save_analysis_result(inspection_id: str, result: dict[str, Any]) -> None:
@@ -518,3 +532,45 @@ def get_onion_decisions(inspection_id: str) -> list[dict[str, Any]]:
         }
         for r in response.data or []
     ]
+
+
+def create_user(
+    *,
+    id: str,
+    email: str,
+    password_hash: str,
+    name: str,
+    role: str = "INSPECTOR",
+    created_at: str,
+) -> dict[str, Any]:
+    return local_store.create_user(
+        id=id,
+        email=email,
+        password_hash=password_hash,
+        name=name,
+        role=role,
+        created_at=created_at,
+    )
+
+
+def get_user_by_email(email: str) -> dict[str, Any] | None:
+    return local_store.get_user_by_email(email)
+
+
+def get_user_by_id(user_id: str) -> dict[str, Any] | None:
+    return local_store.get_user_by_id(user_id)
+
+
+def create_reset_token(email: str, token: str, expires_at: str) -> None:
+    local_store.create_reset_token(email, token, expires_at)
+
+
+def verify_and_consume_reset_token(token: str) -> str | None:
+    return local_store.verify_and_consume_reset_token(token)
+
+
+def update_user_password(email: str, password_hash: str) -> bool:
+    return local_store.update_user_password(email, password_hash)
+
+
+save_review_approval = save_review_and_certificate

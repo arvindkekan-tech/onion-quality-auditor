@@ -18,6 +18,27 @@ def read_certificate(certificate_id: str) -> Certificate:
     return Certificate.model_validate(certificate)
 
 
+from fastapi import Request, Response
+from app.pdf import generate_certificate_pdf
+
+
+@router.get("/certificates/{certificate_id}/pdf")
+def download_certificate_pdf(certificate_id: str, request: Request) -> Response:
+    certificate = store.get_certificate(certificate_id)
+    if certificate is None:
+        raise HTTPException(status_code=404, detail="Certificate not found")
+    origin = f"{request.url.scheme}://{request.url.netloc}"
+    pdf_bytes = generate_certificate_pdf(certificate, origin=origin)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="ONIVIS_Certificate_{certificate_id}.pdf"',
+            "Content-Type": "application/pdf",
+        },
+    )
+
+
 @router.get(
     "/verify/{token}",
     response_model=VerificationResult,

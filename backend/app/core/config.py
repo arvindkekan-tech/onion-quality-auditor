@@ -53,6 +53,7 @@ class Settings:
     supabase_storage_bucket: str = os.getenv(
         "SUPABASE_STORAGE_BUCKET", "inspection-images"
     )
+    jwt_secret: str = os.getenv("JWT_SECRET", "onivis-auth-jwt-secret-key-2026-production-apmc")
     analysis_provider: str = (
         os.getenv("ANALYSIS_PROVIDER")
         or os.getenv("ONIVIS_ANALYSIS_PROVIDER", "demo")

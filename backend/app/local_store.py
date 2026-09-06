@@ -113,8 +113,27 @@ def init_db() -> None:
                 officer_name TEXT,
                 created_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                email TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                name TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'INSPECTOR',
+                created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                token TEXT PRIMARY KEY,
+                email TEXT NOT NULL,
+                expires_at TEXT NOT NULL
+            );
             """
         )
+        # Migrate existing inspections table for user_id
+        try:
+            conn.execute("ALTER TABLE inspections ADD COLUMN user_id TEXT")
+        except Exception:
+            pass
         # Migrate existing certificates table if columns are missing
         for col_def in [
             ("ai_grade", "TEXT"),
@@ -150,26 +169,38 @@ def _safe_json_loads(val: Any) -> Any:
 
 
 def create_inspection(
-    *, id: str, variety: str, weight_kg: float, location: str, created_at: str
+    *,
+    id: str,
+    variety: str,
+    weight_kg: float,
+    location: str,
+    created_at: str,
+    user_id: str | None = None,
 ) -> StoredInspection:
     init_db()
     with _get_connection() as conn:
         conn.execute(
             """
-            INSERT INTO inspections (id, variety, weight_kg, location, created_at, status, analysis_status, analysis_poll_count)
-            VALUES (?, ?, ?, ?, ?, 'draft', NULL, 0)
+            INSERT INTO inspections (id, variety, weight_kg, location, created_at, status, analysis_status, analysis_poll_count, user_id)
+            VALUES (?, ?, ?, ?, ?, 'draft', NULL, 0, ?)
             """,
-            (id, variety, weight_kg, location, created_at),
+            (id, variety, weight_kg, location, created_at, user_id),
         )
     return get_inspection(id)  # type: ignore
 
 
-def get_inspection(inspection_id: str) -> StoredInspection | None:
+def get_inspection(inspection_id: str, user_id: str | None = None) -> StoredInspection | None:
     init_db()
     with _get_connection() as conn:
-        row = conn.execute(
-            "SELECT * FROM inspections WHERE id = ?", (inspection_id,)
-        ).fetchone()
+        if user_id is not None:
+            row = conn.execute(
+                "SELECT * FROM inspections WHERE id = ? AND (user_id = ? OR user_id IS NULL)",
+                (inspection_id, user_id),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT * FROM inspections WHERE id = ?", (inspection_id,)
+            ).fetchone()
         if not row:
             return None
 
@@ -267,18 +298,25 @@ def get_inspection(inspection_id: str) -> StoredInspection | None:
             result=result,
             review=review,
             certificate=certificate,
+            user_id=row["user_id"] if "user_id" in row.keys() else None,
         )
 
 
-def list_inspections() -> list[StoredInspection]:
+def list_inspections(user_id: str | None = None) -> list[StoredInspection]:
     init_db()
     with _get_connection() as conn:
-        rows = conn.execute(
-            "SELECT id FROM inspections ORDER BY created_at DESC"
-        ).fetchall()
+        if user_id is not None:
+            rows = conn.execute(
+                "SELECT id FROM inspections WHERE user_id = ? OR user_id IS NULL ORDER BY created_at DESC",
+                (user_id,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id FROM inspections ORDER BY created_at DESC"
+            ).fetchall()
         inspections = []
         for r in rows:
-            insp = get_inspection(r["id"])
+            insp = get_inspection(r["id"], user_id=user_id)
             if insp:
                 inspections.append(insp)
         return inspections
@@ -348,10 +386,17 @@ def update_inspection(inspection_id: str, values: dict[str, Any]) -> None:
         )
 
 
-def delete_inspection(inspection_id: str) -> None:
+def delete_inspection(inspection_id: str, user_id: str | None = None) -> bool:
     init_db()
     with _get_connection() as conn:
-        conn.execute("DELETE FROM inspections WHERE id = ?", (inspection_id,))
+        if user_id is not None:
+            res = conn.execute(
+                "DELETE FROM inspections WHERE id = ? AND (user_id = ? OR user_id IS NULL)",
+                (inspection_id, user_id),
+            )
+        else:
+            res = conn.execute("DELETE FROM inspections WHERE id = ?", (inspection_id,))
+        return res.rowcount > 0
 
 
 def save_analysis_result(inspection_id: str, result: dict[str, Any]) -> None:
@@ -635,3 +680,89 @@ def get_onion_decisions(inspection_id: str) -> list[dict[str, Any]]:
             }
             for row in cursor.fetchall()
         ]
+
+
+def create_user(
+    *,
+    id: str,
+    email: str,
+    password_hash: str,
+    name: str,
+    role: str = "INSPECTOR",
+    created_at: str,
+) -> dict[str, Any]:
+    init_db()
+    with _get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO users (id, email, password_hash, name, role, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (id, email.lower().strip(), password_hash, name, role, created_at),
+        )
+    return {
+        "id": id,
+        "email": email.lower().strip(),
+        "name": name,
+        "role": role,
+        "createdAt": created_at,
+    }
+
+
+def get_user_by_email(email: str) -> dict[str, Any] | None:
+    init_db()
+    with _get_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM users WHERE email = ?",
+            (email.lower().strip(),),
+        ).fetchone()
+        if not row:
+            return None
+        return dict(row)
+
+
+def get_user_by_id(user_id: str) -> dict[str, Any] | None:
+    init_db()
+    with _get_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+        if not row:
+            return None
+        return dict(row)
+
+
+def create_reset_token(email: str, token: str, expires_at: str) -> None:
+    init_db()
+    with _get_connection() as conn:
+        conn.execute(
+            "INSERT INTO password_reset_tokens (token, email, expires_at) VALUES (?, ?, ?)",
+            (token, email.lower().strip(), expires_at),
+        )
+
+
+def verify_and_consume_reset_token(token: str) -> str | None:
+    init_db()
+    with _get_connection() as conn:
+        row = conn.execute(
+            "SELECT email, expires_at FROM password_reset_tokens WHERE token = ?",
+            (token,),
+        ).fetchone()
+        if not row:
+            return None
+        conn.execute("DELETE FROM password_reset_tokens WHERE token = ?", (token,))
+        return str(row["email"])
+
+
+def update_user_password(email: str, password_hash: str) -> bool:
+    init_db()
+    with _get_connection() as conn:
+        res = conn.execute(
+            "UPDATE users SET password_hash = ? WHERE email = ?",
+            (password_hash, email.lower().strip()),
+        )
+        return res.rowcount > 0
+
+
+save_review_approval = save_review_and_certificate
