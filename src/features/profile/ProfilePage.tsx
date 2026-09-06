@@ -3,15 +3,27 @@ import {
   Database,
   Fingerprint,
   GitCompare,
+  LogOut,
+  Mail,
   MapPin,
   Settings,
   User,
 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 
 import { AlertBanner, MetricCard, SectionHeader } from '@/components/shared'
 import { profileData } from '@/lib/demo-data'
+import { useAuthStore } from '@/stores/authStore'
 
 export function ProfilePage() {
+  const navigate = useNavigate()
+  const user = useAuthStore((s) => s.user)
+  const logout = useAuthStore((s) => s.logout)
+
+  const displayName = user?.name || profileData.name
+  const displayRole = user?.role === 'OFFICER' ? 'APMC Procurement Officer' : 'Authorized Mandi Inspector'
+  const displayEmail = user?.email || 'officer@apmc.gov.in'
+
   return (
     <>
       <main className="flex flex-1 flex-col gap-5 px-4 py-4 pt-5">
@@ -20,8 +32,12 @@ export function ProfilePage() {
             <User className="size-7 text-primary" aria-hidden />
           </div>
           <div>
-            <h1 className="text-lg font-semibold">{profileData.name}</h1>
-            <p className="text-sm text-muted-foreground">{profileData.role}</p>
+            <h1 className="text-lg font-semibold text-foreground">{displayName}</h1>
+            <p className="text-sm text-muted-foreground">{displayRole}</p>
+            <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+              <Mail className="size-3" aria-hidden />
+              {displayEmail}
+            </p>
             <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
               <MapPin className="size-3" aria-hidden />
               {profileData.centre}
@@ -84,6 +100,18 @@ export function ProfilePage() {
         >
           <Settings className="size-4" aria-hidden />
           Settings
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            logout()
+            navigate('/welcome')
+          }}
+          className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 text-sm font-semibold text-red-700 hover:bg-red-100 transition-colors shadow-soft"
+        >
+          <LogOut className="size-4" aria-hidden />
+          Sign Out of Mandi Portal
         </button>
       </main>
     </>

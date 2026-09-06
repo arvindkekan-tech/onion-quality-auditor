@@ -1,4 +1,9 @@
 export const ROUTES = {
+  welcome: '/welcome',
+  login: '/login',
+  signup: '/signup',
+  forgotPassword: '/forgot-password',
+  resetPassword: '/reset-password',
   dashboard: '/',
   inspections: '/inspections',
   newInspection: '/inspection/new',

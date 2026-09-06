@@ -1,5 +1,5 @@
 import { apiClient } from '@/lib/api/client'
-import { useMockApi } from '@/lib/api/config'
+import { apiBaseUrl, useMockApi } from '@/lib/api/config'
 import * as mock from '@/lib/api/mock/certificates.mock'
 import type { Certificate, VerificationResult } from '@/types/certificate'
 import { certificateSchema, verificationResultSchema } from '@/types/certificate'
@@ -15,3 +15,8 @@ export async function verifyCertificate(
   if (useMockApi) return mock.mockVerifyCertificate(token)
   return apiClient.get(`/verify/${token}`, verificationResultSchema)
 }
+
+export function getCertificatePdfUrl(id: string): string {
+  return `${apiBaseUrl}/certificates/${id}/pdf`
+}
+

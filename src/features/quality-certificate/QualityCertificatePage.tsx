@@ -4,6 +4,7 @@ import { Link, useParams } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { PrimaryButton, QrCodeView, SecondaryButton, StatusBadge } from '@/components/shared'
 import { useCertificate } from '@/features/certificates/hooks'
+import { getCertificatePdfUrl } from '@/lib/api/certificates'
 import { APP_NAME } from '@/lib/demo-data'
 import { ROUTES } from '@/lib/constants'
 
@@ -178,16 +179,27 @@ export function QualityCertificatePage() {
               </div>
 
               <div className="space-y-2 print:hidden">
+                <a
+                  href={getCertificatePdfUrl(certificate.id)}
+                  download={`ONIVIS-Certificate-${certificate.id}.pdf`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block w-full"
+                >
+                  <PrimaryButton fullWidth className="gap-2 bg-emerald-700 hover:bg-emerald-800 text-white">
+                    <Download className="size-4" aria-hidden />
+                    Download Official PDF Certificate
+                  </PrimaryButton>
+                </a>
                 <Link to={ROUTES.verify(certificate.qrToken)}>
-                  <PrimaryButton fullWidth>Verify Certificate</PrimaryButton>
+                  <SecondaryButton fullWidth>Verify Authenticity (Public QR)</SecondaryButton>
                 </Link>
                 <SecondaryButton
                   fullWidth
                   className="gap-2"
                   onClick={() => window.print()}
                 >
-                  <Download className="size-4" aria-hidden />
-                  Download / Print Certificate
+                  Print / Save Screen View
                 </SecondaryButton>
               </div>
             </div>

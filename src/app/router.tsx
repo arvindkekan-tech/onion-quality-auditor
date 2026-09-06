@@ -13,24 +13,46 @@ import { HumanReviewPage } from '@/features/human-review'
 import { QualityCertificatePage } from '@/features/quality-certificate'
 import { QrVerificationPage } from '@/features/qr-verification'
 import { ProfilePage } from '@/features/profile'
+import { LandingPage } from '@/features/landing'
+import {
+  LoginPage,
+  SignUpPage,
+  ForgotPasswordPage,
+  ResetPasswordPage,
+  ProtectedRoute,
+} from '@/features/auth'
 import { ROUTES } from '@/lib/constants'
 
 export const router = createBrowserRouter([
+  // Public Routes (Landing, Auth, QR Verification)
+  { path: ROUTES.welcome, element: <LandingPage /> },
+  { path: ROUTES.login, element: <LoginPage /> },
+  { path: ROUTES.signup, element: <SignUpPage /> },
+  { path: ROUTES.forgotPassword, element: <ForgotPasswordPage /> },
+  { path: ROUTES.resetPassword, element: <ResetPasswordPage /> },
+  { path: '/verify/:token', element: <QrVerificationPage /> },
+
+  // Protected Routes (AppShell)
   {
-    element: <AppShell />,
+    element: <ProtectedRoute />,
     children: [
-      { path: ROUTES.dashboard, element: <DashboardPage /> },
-      { path: ROUTES.inspections, element: <InspectionsPage /> },
-      { path: ROUTES.newInspection, element: <NewInspectionPage /> },
-      { path: ROUTES.analytics, element: <AnalyticsPage /> },
-      { path: ROUTES.profile, element: <ProfilePage /> },
-      { path: '/inspection/:id/capture', element: <ImageCapturePage /> },
-      { path: '/inspection/:id/quality', element: <ImageQualityCheckPage /> },
-      { path: '/inspection/:id/analysis', element: <AiAnalysisPage /> },
-      { path: '/inspection/:id/results', element: <InspectionResultsPage /> },
-      { path: '/inspection/:id/review', element: <HumanReviewPage /> },
-      { path: '/certificate/:id', element: <QualityCertificatePage /> },
-      { path: '/verify/:token', element: <QrVerificationPage /> },
+      {
+        element: <AppShell />,
+        children: [
+          { path: ROUTES.dashboard, element: <DashboardPage /> },
+          { path: ROUTES.inspections, element: <InspectionsPage /> },
+          { path: ROUTES.newInspection, element: <NewInspectionPage /> },
+          { path: ROUTES.analytics, element: <AnalyticsPage /> },
+          { path: ROUTES.profile, element: <ProfilePage /> },
+          { path: '/inspection/:id/capture', element: <ImageCapturePage /> },
+          { path: '/inspection/:id/quality', element: <ImageQualityCheckPage /> },
+          { path: '/inspection/:id/analysis', element: <AiAnalysisPage /> },
+          { path: '/inspection/:id/results', element: <InspectionResultsPage /> },
+          { path: '/inspection/:id/review', element: <HumanReviewPage /> },
+          { path: '/certificate/:id', element: <QualityCertificatePage /> },
+        ],
+      },
     ],
   },
 ])
+

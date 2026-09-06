@@ -494,7 +494,7 @@ export function HumanReviewPage() {
 
                       return (
                         <div
-                          key={onionId}
+                          key={`${detection.image_id || 'tray'}_${onionId}_${idx}`}
                           onClick={() => openOverrideModal(detection, idx)}
                           className={cn(
                             'flex cursor-pointer items-center justify-between rounded-xl border p-3 text-sm shadow-soft transition-colors hover:border-primary/50',

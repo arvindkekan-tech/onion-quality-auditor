@@ -123,8 +123,8 @@ export function QrVerificationPage() {
               <section className="rounded-xl border border-border bg-card p-4 shadow-soft">
                 <h3 className="text-sm font-semibold">Audit Timeline</h3>
                 <ol className="mt-3 space-y-3">
-                  {verification.auditTimeline.map((event) => (
-                    <li key={event.time} className="flex gap-3 text-sm">
+                  {verification.auditTimeline.map((event, idx) => (
+                    <li key={`${event.event}_${event.time}_${idx}`} className="flex gap-3 text-sm">
                       <div className="mt-1.5 size-2 shrink-0 rounded-full bg-primary" />
                       <div>
                         <p className="font-medium">{event.event}</p>

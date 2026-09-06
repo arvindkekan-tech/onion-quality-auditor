@@ -45,11 +45,21 @@ async function request<T>(
   schema?: z.ZodType<T>,
 ): Promise<T> {
   const { body, headers, ...rest } = options
+  let authHeaders: Record<string, string> = {}
+  try {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('onivis_token') : null
+    if (token) {
+      authHeaders = { Authorization: `Bearer ${token}` }
+    }
+  } catch {
+    // Ignore
+  }
 
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...rest,
     headers: {
       ...(body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
+      ...authHeaders,
       ...headers,
     },
     body:
