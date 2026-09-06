@@ -1,4 +1,4 @@
-"""Analysis provider boundary for demo and real ONIVIS model adapters."""
+﻿"""Analysis provider boundary for demo and real ONIVIS model adapters."""
 
 from __future__ import annotations
 
@@ -11,8 +11,9 @@ import httpx
 import numpy as np
 
 from app.core.config import settings
+from app.grading import calculate_commercial_grade
 from app.real_ml import OnionInferenceEngine, SizeEstimator
-from app.storage import upload_image
+from app.storage import get_local_image_bytes, upload_image
 from app.store import StoredInspection, utc_now_iso
 
 
@@ -34,6 +35,9 @@ class NormalizedAnalysisResult:
     annotated_image_url: str | None = None
     annotated_image_path: str | None = None
     size_estimation: dict[str, Any] | None = None
+    grade_explanation: str | None = None
+    attention_required: bool = False
+    attention_reason: str | None = None
 
 
 class AnalysisProvider(Protocol):
@@ -62,6 +66,13 @@ class DemoFallbackProvider:
             summary="Demo fallback analysis; replace with the trained ONIVIS model.",
             model_name="ONIVIS Demo Fallback",
             analyzed_at=utc_now_iso(),
+            healthy_count=42,
+            rotten_damaged_count=3,
+            sprouted_count=2,
+            uncertain_count=1,
+            grade_explanation="Grade A — defect ratio 10.4% (<= 15.0% demo tolerance)",
+            attention_required=False,
+            attention_reason=None,
         )
 
 
@@ -91,6 +102,10 @@ class RealMLProvider:
             raise ValueError("Inspection contains no uploaded image for analysis.")
 
         if image.storage_path:
+            local_bytes = get_local_image_bytes(image.storage_path)
+            if local_bytes:
+                return local_bytes
+
             try:
                 from app.core.supabase import get_supabase_client
 
@@ -147,6 +162,7 @@ class RealMLProvider:
                 raise RuntimeError("Real ML inference engine is not ready for analysis.")
         else:
             result = self._engine.predict(image)
+
         size_estimator = getattr(self, "_size_estimator", None)
         if size_estimator is None:
             size_estimation = getattr(self, "_size_estimation", None)
@@ -183,14 +199,25 @@ class RealMLProvider:
             {"label": "uncertain", "count": uncertain, "category": "classification"},
         ]
 
-        dominant_class = self._dominant_class(summary)
+        dominant_class = self._dominant_class(summary) if total_onions > 0 else "uncertain"
+
+        # Calculate isolated commercial grade
+        grade_result = calculate_commercial_grade(
+            total_onions=total_onions,
+            healthy_count=healthy,
+            rotten_damaged_count=rotten,
+            sprouted_count=sprouted,
+            uncertain_count=uncertain,
+            average_confidence=average_confidence,
+        )
+
         annotated_image_bytes = result.get("annotated_image")
         annotated_path = None
         annotated_url = getattr(self, "_annotated_image_url", None)
-        if annotated_image_bytes:
-            if settings.supabase_url and settings.supabase_service_role_key:
-                annotation_id = f"annot-{inspection.id}-{len(inspection.images)}"
-                safe_name = f"{inspection.id}-annotated.jpg"
+        if annotated_image_bytes and not annotated_url:
+            annotation_id = f"annot-{inspection.id}-{len(inspection.images)}"
+            safe_name = f"{inspection.id}-annotated.jpg"
+            try:
                 annotated_path, annotated_url = upload_image(
                     inspection.id,
                     annotation_id,
@@ -198,18 +225,25 @@ class RealMLProvider:
                     annotated_image_bytes,
                     "image/jpeg",
                 )
+            except Exception:
+                pass
+
+        if total_onions == 0:
+            analysis_summary = "No onions detected. Please recapture with sufficient sample coverage."
+        else:
+            analysis_summary = (
+                f"Detected {total_onions} onions: "
+                f"healthy={healthy}, rotten_damaged={rotten}, sprouted={sprouted}, uncertain={uncertain}. "
+                f"Commercial assessment: {grade_result.explanation}."
+            )
 
         return NormalizedAnalysisResult(
-            grade="Unrated",
+            grade=grade_result.grade,
             confidence=round(average_confidence, 4),
             classification=dominant_class,
             total_onions=total_onions,
             defects=defect_items,
-            summary=(
-                f"Detected {total_onions} onions: "
-                f"healthy={healthy}, rotten_damaged={rotten}, sprouted={sprouted}, uncertain={uncertain}. "
-                "The real model does not assign a business grade; human review is required."
-            ),
+            summary=analysis_summary,
             model_name="YOLO Onion Detection + YOLO Classification",
             analyzed_at=utc_now_iso(),
             detections=detections,
@@ -220,6 +254,9 @@ class RealMLProvider:
             annotated_image_url=annotated_url,
             annotated_image_path=annotated_path,
             size_estimation=size_estimation,
+            grade_explanation=grade_result.explanation,
+            attention_required=grade_result.attention_required,
+            attention_reason=grade_result.attention_reason,
         )
 
 

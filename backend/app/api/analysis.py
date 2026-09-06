@@ -34,6 +34,9 @@ def _complete_analysis(inspection: store.StoredInspection) -> None:
         "annotatedImagePath": normalized.annotated_image_path,
         "sizeEstimation": normalized.size_estimation,
         "detections": normalized.detections,
+        "gradeExplanation": getattr(normalized, "grade_explanation", None),
+        "attentionRequired": getattr(normalized, "attention_required", False),
+        "attentionReason": getattr(normalized, "attention_reason", None),
     }
     store.save_analysis_result(inspection.id, result)
     store.update_inspection(

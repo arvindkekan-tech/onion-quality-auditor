@@ -215,44 +215,60 @@ def submit_review(inspection_id: str, payload: ReviewInput) -> ReviewResponse:
             detail="Results not available yet. Complete analysis first.",
         )
 
-    certificate_id = store.new_id("cert")
-    issued_at = store.utc_now_iso()
-    result = inspection.result or {}
-    grade = payload.overrideGrade or result.get("grade") or "Grade A"
-    qr_token = f"qr-{certificate_id}"
-    analyzed_at = result.get("analyzedAt") or issued_at
-    certificate = {
-        "id": certificate_id,
-        "inspectionId": inspection_id,
-        "grade": grade,
-        "issuedAt": issued_at,
-        "batchLabel": f"{inspection.variety} — {inspection.location}",
-        "qrToken": qr_token,
-        "inspectorName": "Rajesh Patil",
-        "procurementCentre": inspection.location,
-        "specification": inspection.variety,
-        "sampleSize": result.get("totalOnions"),
-        "confidence": result.get("confidence"),
-        "defectSummary": payload.notes or result.get("summary"),
-        "auditTimeline": [
-            {"event": "Inspection completed", "time": inspection.created_at},
-            {"event": "AI analysis verified", "time": analyzed_at},
-            {"event": "Human review approved", "time": issued_at},
-            {"event": "Certificate issued", "time": issued_at},
-        ],
-    }
-    store.save_review_and_certificate(
-        inspection_id,
-        {
-            "approved": payload.approved,
-            "notes": payload.notes,
-            "overrideGrade": payload.overrideGrade,
-        },
-        certificate,
-    )
-    return ReviewResponse(
-        inspectionId=inspection_id,
-        certificateId=certificate_id,
-        approved=payload.approved,
-        notes=payload.notes,
-    )
+    if payload.approved:
+        certificate_id = store.new_id("cert")
+        issued_at = store.utc_now_iso()
+        result = inspection.result or {}
+        grade = payload.overrideGrade or result.get("grade") or "Grade A"
+        qr_token = f"qr-{certificate_id}"
+        analyzed_at = result.get("analyzedAt") or issued_at
+        certificate = {
+            "id": certificate_id,
+            "inspectionId": inspection_id,
+            "grade": grade,
+            "issuedAt": issued_at,
+            "batchLabel": f"{inspection.variety} — {inspection.location}",
+            "qrToken": qr_token,
+            "inspectorName": "Rajesh Patil",
+            "procurementCentre": inspection.location,
+            "specification": inspection.variety,
+            "sampleSize": result.get("totalOnions"),
+            "confidence": result.get("confidence"),
+            "defectSummary": payload.notes or result.get("summary"),
+            "auditTimeline": [
+                {"event": "Inspection completed", "time": inspection.created_at},
+                {"event": "AI analysis verified", "time": analyzed_at},
+                {"event": "Human review approved", "time": issued_at},
+                {"event": "Certificate issued", "time": issued_at},
+            ],
+        }
+        store.save_review_and_certificate(
+            inspection_id,
+            {
+                "approved": True,
+                "notes": payload.notes,
+                "overrideGrade": payload.overrideGrade,
+            },
+            certificate,
+        )
+        return ReviewResponse(
+            inspectionId=inspection_id,
+            certificateId=certificate_id,
+            approved=True,
+            notes=payload.notes,
+        )
+    else:
+        store.save_review_rejection(
+            inspection_id,
+            {
+                "approved": False,
+                "notes": payload.notes,
+                "overrideGrade": payload.overrideGrade or "Rejected",
+            },
+        )
+        return ReviewResponse(
+            inspectionId=inspection_id,
+            certificateId=None,
+            approved=False,
+            notes=payload.notes,
+        )

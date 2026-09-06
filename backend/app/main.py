@@ -20,6 +20,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from fastapi.staticfiles import StaticFiles
+from app.storage import UPLOAD_DIR
+
 app.include_router(health_router)
 app.include_router(inspections_router, prefix="/api/v1")
 app.include_router(analysis_router, prefix="/api/v1")
@@ -28,6 +31,9 @@ app.include_router(certificates_router, prefix="/api/v1")
 app.include_router(inspections_router)
 app.include_router(analysis_router)
 app.include_router(certificates_router)
+
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
 
 @app.exception_handler(HTTPException)

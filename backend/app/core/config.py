@@ -1,7 +1,19 @@
-"""Application settings loaded from environment variables."""
-
 import os
 from pathlib import Path
+
+_env_candidates = [
+    Path.cwd() / ".env",
+    Path(__file__).resolve().parents[2] / ".env",
+    Path(__file__).resolve().parents[3] / ".env",
+]
+for _cand in _env_candidates:
+    if _cand.exists():
+        for _line in _cand.read_text(encoding="utf-8-sig").splitlines():
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _v = _line.split("=", 1)
+                os.environ.setdefault(_k.strip().lstrip("\ufeff"), _v.strip())
+        break
 
 
 def _resolve_model_path(name: str, default_filename: str) -> str:
@@ -60,7 +72,11 @@ class Settings:
     window_height_mm: float | None = _float_env("WINDOW_HEIGHT_MM")
     cors_origins: list[str] = [
         "http://localhost:5173",
+        "http://127.0.0.1:5173",
         "http://localhost:4173",
+        "http://127.0.0.1:4173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
         "https://onivis-frontend.onrender.com",
     ]
 

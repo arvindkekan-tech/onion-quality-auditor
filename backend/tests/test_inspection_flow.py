@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from app import storage, store
 from app.api import analysis as analysis_api
+from app.core.config import settings
 from app.main import app
 
 client = TestClient(app)
@@ -148,6 +149,8 @@ def fake_supabase(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = FakeSupabase()
     monkeypatch.setattr(store, "get_supabase_client", lambda: fake)
     monkeypatch.setattr(storage, "get_supabase_client", lambda: fake)
+    monkeypatch.setattr(settings, "analysis_provider", "demo")
+
 
 
 def _create_inspection() -> str:
@@ -488,3 +491,32 @@ def test_cors_allows_frontend_origins() -> None:
         response.headers.get("access-control-allow-origin")
         == "https://onivis-frontend.onrender.com"
     )
+
+
+def test_review_rejection_marks_inspection_rejected_without_certificate() -> None:
+    inspection_id = _create_inspection()
+    _upload_image(inspection_id)
+    client.post(f"/api/v1/inspections/{inspection_id}/analyze")
+    for _ in range(4):
+        client.get(f"/api/v1/inspections/{inspection_id}/analysis-status")
+
+    # Reject
+    review_res = client.patch(
+        f"/api/v1/inspections/{inspection_id}/review",
+        json={"approved": False, "notes": "Too many rotten onions"},
+    )
+    assert review_res.status_code == 200, review_res.text
+    review_data = review_res.json()
+    assert review_data["approved"] is False
+    assert review_data["certificateId"] is None
+
+    # Check inspection status is rejected
+    insp = client.get(f"/api/v1/inspections/{inspection_id}").json()
+    assert insp["status"] == "rejected"
+
+    # Check history item shows rejected and no certificate
+    history = client.get("/api/v1/inspections").json()
+    item = next(h for h in history if h["id"] == inspection_id)
+    assert item["status"] == "rejected"
+    assert item["certificateId"] is None
+    assert item["reviewSubmitted"] is True

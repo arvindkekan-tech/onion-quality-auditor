@@ -1,4 +1,4 @@
-"""Supabase-backed persistence for inspection workflow state."""
+"""Persistence for inspection workflow state with Supabase and SQLite fallback."""
 
 from __future__ import annotations
 
@@ -7,14 +7,19 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 from uuid import uuid4
 
+from app.core.config import settings
 from app.core.supabase import get_supabase_client
-
-InspectionStatus = Literal["draft", "in_progress", "completed", "reviewed"]
-AnalysisStatus = Literal["pending", "processing", "completed", "failed"]
+from app import local_store
+from app.store_types import (
+    AnalysisStatus,
+    InspectionStatus,
+    StoredImage,
+    StoredInspection,
+)
 
 
 class PersistenceError(RuntimeError):
-    """Raised when Supabase cannot complete a persistence operation."""
+    """Raised when persistence cannot complete an operation."""
 
 
 def utc_now_iso() -> str:
@@ -25,30 +30,12 @@ def new_id(prefix: str) -> str:
     return f"{prefix}-{uuid4().hex[:8]}"
 
 
-@dataclass
-class StoredImage:
-    id: str
-    uploaded_at: str
-    filename: str
-    content_type: str
-    storage_path: str
-    url: str | None = None
-
-
-@dataclass
-class StoredInspection:
-    id: str
-    variety: str
-    weight_kg: float
-    location: str
-    created_at: str
-    status: InspectionStatus
-    images: list[StoredImage] = field(default_factory=list)
-    analysis_status: AnalysisStatus | None = None
-    analysis_poll_count: int = 0
-    result: dict[str, Any] | None = None
-    review: dict[str, Any] | None = None
-    certificate: dict[str, Any] | None = None
+def _is_supabase_active() -> bool:
+    try:
+        client = get_supabase_client()
+        return client is not None
+    except Exception:
+        return False
 
 
 def _client():
@@ -66,7 +53,7 @@ def _execute(operation: Any) -> Any:
     try:
         return operation.execute()
     except Exception as exc:
-        raise PersistenceError("Supabase persistence operation failed") from exc
+        raise PersistenceError("Persistence operation failed") from exc
 
 
 def _image_from_row(row: dict[str, Any]) -> StoredImage:
@@ -131,6 +118,9 @@ def _inspection_from_row(row: dict[str, Any]) -> StoredInspection:
             "annotatedImagePath": result_row.get("annotated_image_path"),
             "sizeEstimation": result_row.get("size_estimation"),
             "detections": result_row.get("detections"),
+            "gradeExplanation": result_row.get("grade_explanation"),
+            "attentionRequired": bool(result_row.get("attention_required", False)),
+            "attentionReason": result_row.get("attention_reason"),
         }
     review_row = _first(review_response)
     review = None
@@ -173,6 +163,14 @@ def _get_inspection_row(inspection_id: str) -> dict[str, Any] | None:
 def create_inspection(
     *, id: str, variety: str, weight_kg: float, location: str, created_at: str
 ) -> StoredInspection:
+    if not _is_supabase_active():
+        return local_store.create_inspection(
+            id=id,
+            variety=variety,
+            weight_kg=weight_kg,
+            location=location,
+            created_at=created_at,
+        )
     row = {
         "id": id,
         "variety": variety,
@@ -191,11 +189,15 @@ def create_inspection(
 
 
 def get_inspection(inspection_id: str) -> StoredInspection | None:
+    if not _is_supabase_active():
+        return local_store.get_inspection(inspection_id)
     row = _get_inspection_row(inspection_id)
     return _inspection_from_row(row) if row else None
 
 
 def list_inspections() -> list[StoredInspection]:
+    if not _is_supabase_active():
+        return local_store.list_inspections()
     response = _execute(
         _client()
         .table("inspections")
@@ -206,6 +208,8 @@ def list_inspections() -> list[StoredInspection]:
 
 
 def get_image(inspection_id: str, image_id: str) -> StoredImage | None:
+    if not _is_supabase_active():
+        return local_store.get_image(inspection_id, image_id)
     response = _execute(
         _client()
         .table("inspection_images")
@@ -228,6 +232,16 @@ def create_image(
     storage_path: str,
     url: str,
 ) -> StoredImage:
+    if not _is_supabase_active():
+        return local_store.create_image(
+            id=id,
+            inspection_id=inspection_id,
+            uploaded_at=uploaded_at,
+            filename=filename,
+            content_type=content_type,
+            storage_path=storage_path,
+            url=url,
+        )
     response = _execute(
         _client()
         .table("inspection_images")
@@ -260,14 +274,23 @@ def create_image(
 
 
 def update_inspection(inspection_id: str, values: dict[str, Any]) -> None:
+    if not _is_supabase_active():
+        local_store.update_inspection(inspection_id, values)
+        return
     _execute(_client().table("inspections").update(values).eq("id", inspection_id))
 
 
 def delete_inspection(inspection_id: str) -> None:
+    if not _is_supabase_active():
+        local_store.delete_inspection(inspection_id)
+        return
     _execute(_client().table("inspections").delete().eq("id", inspection_id))
 
 
 def save_analysis_result(inspection_id: str, result: dict[str, Any]) -> None:
+    if not _is_supabase_active():
+        local_store.save_analysis_result(inspection_id, result)
+        return
     row = {
         "inspection_id": inspection_id,
         "grade": result["grade"],
@@ -286,6 +309,9 @@ def save_analysis_result(inspection_id: str, result: dict[str, Any]) -> None:
         "annotated_image_path": result.get("annotatedImagePath"),
         "size_estimation": result.get("sizeEstimation"),
         "detections": result.get("detections"),
+        "grade_explanation": result.get("gradeExplanation"),
+        "attention_required": result.get("attentionRequired", False),
+        "attention_reason": result.get("attentionReason"),
     }
     _execute(_client().table("analysis_results").upsert(row))
 
@@ -314,6 +340,9 @@ def save_review_and_certificate(
     review: dict[str, Any],
     certificate: dict[str, Any],
 ) -> None:
+    if not _is_supabase_active():
+        local_store.save_review_and_certificate(inspection_id, review, certificate)
+        return
     certificate_row = {
         "id": certificate["id"],
         "inspection_id": inspection_id,
@@ -363,7 +392,38 @@ def save_review_and_certificate(
         raise
 
 
+def save_review_rejection(
+    inspection_id: str,
+    review: dict[str, Any],
+) -> None:
+    if not _is_supabase_active():
+        local_store.save_review_rejection(inspection_id, review)
+        return
+    # Delete certificate if exists
+    try:
+        _execute(_client().table("certificates").delete().eq("inspection_id", inspection_id))
+    except Exception:
+        pass
+    _execute(
+        _client()
+        .table("reviews")
+        .upsert(
+            {
+                "inspection_id": inspection_id,
+                "certificate_id": None,
+                "approved": False,
+                "notes": review.get("notes"),
+                "override_grade": review.get("overrideGrade"),
+                "reviewed_at": utc_now_iso(),
+            }
+        )
+    )
+    update_inspection(inspection_id, {"status": "rejected"})
+
+
 def get_certificate(certificate_id: str) -> dict[str, Any] | None:
+    if not _is_supabase_active():
+        return local_store.get_certificate(certificate_id)
     response = _execute(
         _client()
         .table("certificates")
@@ -376,6 +436,8 @@ def get_certificate(certificate_id: str) -> dict[str, Any] | None:
 
 
 def get_certificate_by_token(token: str) -> dict[str, Any] | None:
+    if not _is_supabase_active():
+        return local_store.get_certificate_by_token(token)
     response = _execute(
         _client()
         .table("certificates")

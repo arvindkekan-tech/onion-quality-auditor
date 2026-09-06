@@ -48,6 +48,9 @@ class InspectionResult(BaseModel):
     annotatedImagePath: str | None = None
     sizeEstimation: dict[str, object] | None = None
     detections: list[dict[str, object]] | None = None
+    gradeExplanation: str | None = None
+    attentionRequired: bool = False
+    attentionReason: str | None = None
 
 
 class ReviewInput(BaseModel):
@@ -58,6 +61,6 @@ class ReviewInput(BaseModel):
 
 class ReviewResponse(BaseModel):
     inspectionId: str
-    certificateId: str
+    certificateId: str | None = None
     approved: bool
     notes: str | None = None
