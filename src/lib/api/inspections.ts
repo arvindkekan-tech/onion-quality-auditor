@@ -11,6 +11,8 @@ import type {
   InspectionHistoryItem,
   InspectionImage,
   InspectionResult,
+  OnionDecision,
+  RecalculateResponse,
   ReviewInput,
   ReviewResponse,
 } from '@/types/inspection'
@@ -21,6 +23,7 @@ import {
   inspectionHistoryItemSchema,
   inspectionResultSchema,
   inspectionSchema,
+  recalculateResponseSchema,
   reviewResponseSchema,
 } from '@/types/inspection'
 
@@ -106,5 +109,16 @@ export async function submitReview(
     `/inspections/${inspectionId}/review`,
     input,
     reviewResponseSchema,
+  )
+}
+
+export async function recalculateInspection(
+  inspectionId: string,
+  decisions: OnionDecision[],
+): Promise<RecalculateResponse> {
+  return apiClient.post(
+    `/inspections/${inspectionId}/recalculate`,
+    { decisions },
+    recalculateResponseSchema,
   )
 }

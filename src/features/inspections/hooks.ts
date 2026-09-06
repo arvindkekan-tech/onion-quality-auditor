@@ -7,12 +7,14 @@ import {
   getInspectionHistory,
   getAnalysisStatus,
   getInspectionResults,
+  recalculateInspection,
   startAnalysis,
   submitReview,
   uploadImage,
 } from '@/lib/api/inspections'
 import type {
   CreateInspectionInput,
+  OnionDecision,
   ReviewInput,
 } from '@/types/inspection'
 
@@ -98,5 +100,12 @@ export function useInspectionResults(inspectionId: string, enabled = true) {
 export function useSubmitReview(inspectionId: string) {
   return useMutation({
     mutationFn: (input: ReviewInput) => submitReview(inspectionId, input),
+  })
+}
+
+export function useRecalculateInspection(inspectionId: string) {
+  return useMutation({
+    mutationFn: (decisions: OnionDecision[]) =>
+      recalculateInspection(inspectionId, decisions),
   })
 }

@@ -14,6 +14,19 @@ export const certificateSchema = z.object({
   sampleSize: z.number().nullable().optional(),
   confidence: z.number().nullable().optional(),
   defectSummary: z.string().nullable().optional(),
+  aiGrade: z.string().nullable().optional(),
+  officerGrade: z.string().nullable().optional(),
+  overrideCount: z.number().optional(),
+  dualAssessment: z.record(z.string(), z.any()).nullable().optional(),
+  auditTimeline: z
+    .array(
+      z.object({
+        event: z.string(),
+        time: z.string(),
+      }),
+    )
+    .nullable()
+    .optional(),
 })
 
 export const auditEventSchema = z.object({

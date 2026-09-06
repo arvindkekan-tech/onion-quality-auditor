@@ -1,8 +1,8 @@
-import { Download, QrCode, ShieldCheck } from 'lucide-react'
+import { Download, ShieldCheck } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 
 import { PageHeader } from '@/components/layout/PageHeader'
-import { PrimaryButton, SecondaryButton, StatusBadge } from '@/components/shared'
+import { PrimaryButton, QrCodeView, SecondaryButton, StatusBadge } from '@/components/shared'
 import { useCertificate } from '@/features/certificates/hooks'
 import { APP_NAME } from '@/lib/demo-data'
 import { ROUTES } from '@/lib/constants'
@@ -12,20 +12,33 @@ export function QualityCertificatePage() {
   const certificateQuery = useCertificate(id)
   const certificate = certificateQuery.data
 
+  const verifyUrl = certificate
+    ? `${window.location.origin}${ROUTES.verify(certificate.qrToken)}`
+    : ''
+
+  const statusBadgeType =
+    certificate?.grade.toLowerCase().includes('grade a')
+      ? 'grade_a'
+      : certificate?.grade.toLowerCase().includes('urs')
+        ? 'urs'
+        : 'rejected'
+
   return (
     <>
-      <PageHeader
-        title="Digital Certificate"
-        subtitle="Official quality record"
-        backTo={ROUTES.dashboard}
-      />
-      <main className="flex flex-1 flex-col gap-4 px-4 py-4">
+      <div className="print:hidden">
+        <PageHeader
+          title="Digital Certificate"
+          subtitle="Official quality record"
+          backTo={ROUTES.dashboard}
+        />
+      </div>
+      <main className="flex flex-1 flex-col gap-4 px-4 py-4 print:p-0">
         {certificateQuery.isPending ? (
           <p className="text-sm text-muted-foreground">Loading certificate…</p>
         ) : null}
 
         {certificate ? (
-          <div className="overflow-hidden rounded-2xl border-2 border-primary/20 bg-card shadow-card">
+          <div className="overflow-hidden rounded-2xl border-2 border-primary/20 bg-card shadow-card print:border-none print:shadow-none">
             <div className="bg-primary px-4 py-5 text-primary-foreground">
               <div className="flex items-center gap-2">
                 <ShieldCheck className="size-5" aria-hidden />
@@ -41,7 +54,7 @@ export function QualityCertificatePage() {
 
             <div className="space-y-4 p-4">
               <div className="flex items-center justify-between">
-                <StatusBadge status="grade_a" label={certificate.grade} />
+                <StatusBadge status={statusBadgeType} label={certificate.grade} />
                 <span className="text-xs text-muted-foreground">
                   {new Date(certificate.issuedAt).toLocaleDateString('en-IN', {
                     day: 'numeric',
@@ -96,23 +109,85 @@ export function QualityCertificatePage() {
                 </div>
               ) : null}
 
-              <div className="flex flex-col items-center rounded-xl border border-dashed border-border bg-surface-muted py-6">
-                <QrCode className="size-16 text-primary" aria-hidden />
-                <p className="mt-2 text-xs text-muted-foreground">
+              {/* Dual Assessment Track */}
+              <div className="space-y-2 rounded-xl border border-border bg-surface-muted p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-foreground">
+                    Quality Assessment Tracks
+                  </span>
+                  {(certificate.overrideCount ?? 0) > 0 ? (
+                    <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
+                      {certificate.overrideCount} Override(s) Audited
+                    </span>
+                  ) : (
+                    <span className="rounded-full border border-border bg-card px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                      Concurred with AI
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded-lg border border-border bg-card p-2.5">
+                    <span className="text-[10px] font-semibold text-muted-foreground">
+                      AI Baseline
+                    </span>
+                    <p className="mt-0.5 font-bold text-foreground">
+                      {certificate.aiGrade || certificate.grade}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      Confidence:{' '}
+                      {certificate.confidence
+                        ? `${(certificate.confidence * 100).toFixed(1)}%`
+                        : '—'}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border-2 border-primary/40 bg-card p-2.5">
+                    <span className="text-[10px] font-bold text-primary">
+                      Officer Final (Certified)
+                    </span>
+                    <p className="mt-0.5 font-extrabold text-foreground">
+                      {certificate.officerGrade || certificate.grade}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      Inspector:{' '}
+                      {certificate.inspectorName ?? 'Authorized Officer'}
+                    </p>
+                  </div>
+                </div>
+                {(certificate.overrideCount ?? 0) > 0 ? (
+                  <p className="text-[11px] italic text-primary/90">
+                    Official grade reflects authorized officer inspection overrides logged in audit record.
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="flex flex-col items-center rounded-xl border border-dashed border-border bg-surface-muted py-5 px-4 text-center">
+                <QrCodeView
+                  value={verifyUrl}
+                  size={150}
+                  alt={`QR Code for Certificate ${certificate.id}`}
+                />
+                <p className="mt-2.5 text-xs font-semibold text-foreground">
                   Scan to verify authenticity
                 </p>
+                <p className="mt-0.5 max-w-xs break-all text-[10px] text-muted-foreground">
+                  {verifyUrl}
+                </p>
                 <p className="mt-1 font-mono text-[10px] text-muted-foreground">
-                  {certificate.qrToken}
+                  Token: {certificate.qrToken}
                 </p>
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-2 print:hidden">
                 <Link to={ROUTES.verify(certificate.qrToken)}>
                   <PrimaryButton fullWidth>Verify Certificate</PrimaryButton>
                 </Link>
-                <SecondaryButton fullWidth className="gap-2">
+                <SecondaryButton
+                  fullWidth
+                  className="gap-2"
+                  onClick={() => window.print()}
+                >
                   <Download className="size-4" aria-hidden />
-                  Download Certificate
+                  Download / Print Certificate
                 </SecondaryButton>
               </div>
             </div>

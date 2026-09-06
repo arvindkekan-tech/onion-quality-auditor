@@ -48,7 +48,9 @@ export function DashboardPage() {
   const inspectionsToday = inspections.filter(
     (item) => new Date(item.createdAt).toDateString() === today,
   ).length
-  const gradeACount = inspections.filter((item) => item.grade?.toLowerCase() === 'grade a').length
+  const rejectedCount = inspections.filter(
+    (item) => item.status === 'rejected' || item.grade?.toLowerCase().includes('reject'),
+  ).length
 
   return (
     <>
@@ -68,7 +70,6 @@ export function DashboardPage() {
           <MetricCard
             label="Completed"
             value={completed.length}
-            suffix="%"
             icon={TrendingUp}
           />
           <MetricCard
@@ -116,9 +117,10 @@ export function DashboardPage() {
           ) : null}
         </section>
 
-        <p className="text-xs text-muted-foreground">
-          Grade A inspections: {gradeACount} of {inspections.length}
-        </p>
+        <div className="flex justify-between text-xs text-muted-foreground border-t border-border pt-3">
+          <span>Grade A: {inspections.filter((item) => item.grade?.toLowerCase() === 'grade a').length} of {inspections.length}</span>
+          <span>Rejected: {rejectedCount}</span>
+        </div>
       </main>
     </>
   )

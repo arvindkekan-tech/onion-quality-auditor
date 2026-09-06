@@ -50,9 +50,23 @@ export function QrVerificationPage() {
 
             {cert && verification.valid ? (
               <div className="rounded-xl border border-border bg-card p-4 shadow-soft">
-                <div className="mb-4 flex items-center gap-2">
-                  <ShieldCheck className="size-4 text-primary" aria-hidden />
-                  <StatusBadge status="grade_a" label={cert.grade} />
+                <div className="mb-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="size-4 text-primary" aria-hidden />
+                    <span className="text-xs font-semibold text-muted-foreground">
+                      Certified Official Grade:
+                    </span>
+                  </div>
+                  <StatusBadge
+                    status={
+                      cert.grade.toLowerCase().includes('grade a')
+                        ? 'grade_a'
+                        : cert.grade.toLowerCase().includes('urs')
+                          ? 'urs'
+                          : 'rejected'
+                    }
+                    label={cert.grade}
+                  />
                 </div>
                 <dl className="space-y-3 text-sm">
                   <VerifyRow label="Certificate ID" value={cert.id} />
@@ -86,6 +100,21 @@ export function QrVerificationPage() {
                         : '—'
                     }
                   />
+                  {cert.aiGrade ? (
+                    <VerifyRow label="AI Recommended Grade" value={cert.aiGrade} />
+                  ) : null}
+                  {cert.officerGrade ? (
+                    <VerifyRow
+                      label="Officer Final Grade"
+                      value={cert.officerGrade}
+                    />
+                  ) : null}
+                  {(cert.overrideCount ?? 0) > 0 ? (
+                    <VerifyRow
+                      label="Manual Overrides"
+                      value={`${cert.overrideCount} verified in audit trail`}
+                    />
+                  ) : null}
                 </dl>
               </div>
             ) : null}

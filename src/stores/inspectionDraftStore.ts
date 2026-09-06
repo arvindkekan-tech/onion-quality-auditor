@@ -53,10 +53,11 @@ export const useInspectionDraftStore = create<InspectionDraftState>((set) => ({
       metadata: { ...state.metadata, ...metadata },
     })),
   addImage: (file) =>
-    set(() => {
+    set((state) => {
       const draft = createDraftImage(file)
+      const nextImages = [...state.images, draft]
       return {
-        images: [draft],
+        images: nextImages,
         previewUrl: draft.previewUrl,
       }
     }),
@@ -64,10 +65,21 @@ export const useInspectionDraftStore = create<InspectionDraftState>((set) => ({
     set((state) => {
       const image = state.images.find((item) => item.id === id)
       if (image) URL.revokeObjectURL(image.previewUrl)
-      return { images: [], previewUrl: null }
+      const nextImages = state.images.filter((item) => item.id !== id)
+      return {
+        images: nextImages,
+        previewUrl:
+          nextImages.length > 0
+            ? nextImages[nextImages.length - 1].previewUrl
+            : null,
+      }
     }),
   setPreviewUrl: (url) => set({ previewUrl: url }),
-  clearImages: () => set({ images: [] }),
+  clearImages: () =>
+    set((state) => {
+      state.images.forEach((image) => URL.revokeObjectURL(image.previewUrl))
+      return { images: [], previewUrl: null }
+    }),
   reset: () =>
     set((state) => {
       state.images.forEach((image) => URL.revokeObjectURL(image.previewUrl))

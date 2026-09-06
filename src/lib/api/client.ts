@@ -11,9 +11,14 @@ async function parseResponse<T>(
   response: Response,
   schema?: z.ZodType<T>,
 ): Promise<T> {
+  if (response.status === 204 || response.headers.get('content-length') === '0') {
+    return undefined as T
+  }
+
   const contentType = response.headers.get('content-type')
   const isJson = contentType?.includes('application/json')
-  const data = isJson ? await response.json() : await response.text()
+  const text = await response.text()
+  const data = isJson && text.trim() ? JSON.parse(text) : text
 
   if (!response.ok) {
     const message =
