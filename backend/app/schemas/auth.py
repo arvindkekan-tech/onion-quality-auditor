@@ -10,7 +10,7 @@ class UserSignUp(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=6, description="Password must be at least 6 characters")
     name: str = Field(..., min_length=1, description="Full name or inspector name")
-    role: Literal["INSPECTOR", "ADMIN", "OFFICER"] = "INSPECTOR"
+    role: Literal["INSPECTOR", "ADMIN", "OFFICER", "FARMER"] = "INSPECTOR"
 
 
 class UserLogin(BaseModel):

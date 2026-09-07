@@ -48,7 +48,8 @@ def upload_image(
     local_path = UPLOAD_DIR / path
     local_path.parent.mkdir(parents=True, exist_ok=True)
     local_path.write_bytes(content)
-    public_url = f"http://localhost:8000/uploads/{path}"
+    base = settings.public_base_url.rstrip("/")
+    public_url = f"{base}/uploads/{path}"
     return path, public_url
 
 

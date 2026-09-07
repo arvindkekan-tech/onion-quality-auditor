@@ -16,3 +16,4 @@ uploads/
 backend/data/
 backend/uploads/
 backend/models/best/
+supabase/.temp/

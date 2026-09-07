@@ -45,9 +45,33 @@ def _float_env(name: str) -> float | None:
         return None
 
 
+def _parse_cors_origins() -> list[str]:
+    defaults = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://onivis-frontend.onrender.com",
+    ]
+    raw = os.getenv("CORS_ORIGINS")
+    if raw:
+        for item in raw.split(","):
+            item = item.strip()
+            if item and item not in defaults:
+                defaults.append(item)
+    return defaults
+
+
 class Settings:
     app_name: str = os.getenv("ONIVIS_APP_NAME", "ONIVIS API")
     environment: str = os.getenv("ONIVIS_ENV", "local")
+    public_base_url: str = (
+        os.getenv("ONIVIS_PUBLIC_URL")
+        or os.getenv("RENDER_EXTERNAL_URL")
+        or "http://localhost:8000"
+    )
     supabase_url: str = os.getenv("SUPABASE_URL", "")
     supabase_service_role_key: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
     supabase_storage_bucket: str = os.getenv(
@@ -71,15 +95,7 @@ class Settings:
     )
     window_width_mm: float | None = _float_env("WINDOW_WIDTH_MM")
     window_height_mm: float | None = _float_env("WINDOW_HEIGHT_MM")
-    cors_origins: list[str] = [
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:4173",
-        "http://127.0.0.1:4173",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "https://onivis-frontend.onrender.com",
-    ]
+    cors_origins: list[str] = _parse_cors_origins()
 
 
 settings = Settings()
