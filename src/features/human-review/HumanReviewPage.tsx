@@ -5,6 +5,7 @@ import {
   Edit3,
   RotateCcw,
   ShieldCheck,
+  Sparkles,
   X,
   XCircle,
 } from 'lucide-react'
@@ -16,8 +17,10 @@ import {
   PrimaryButton,
   SecondaryButton,
   StatusBadge,
+  WhyThisGradeCard,
 } from '@/components/shared'
 import {
+  useAdaptiveRecommendations,
   useInspectionResults,
   useRecalculateInspection,
   useSubmitReview,
@@ -59,6 +62,9 @@ export function HumanReviewPage() {
   const previewUrl = useInspectionDraftStore((s) => s.previewUrl)
 
   const results = resultsQuery.data
+  const adaptiveQuery = useAdaptiveRecommendations(id)
+  const adaptiveRecs = adaptiveQuery.data?.recommendations || {}
+
   const [notes, setNotes] = useState('')
   const [overrideGrade, setOverrideGrade] = useState<string>('')
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -67,7 +73,7 @@ export function HumanReviewPage() {
   // Onion override state
   const [onionDecisions, setOnionDecisions] = useState<Record<string, OnionDecision>>({})
   const [selectedOnion, setSelectedOnion] = useState<DetectionItem | null>(null)
-  const [filterTab, setFilterTab] = useState<'all' | 'healthy' | 'defects'>('all')
+  const [filterTab, setFilterTab] = useState<'all' | 'attention' | 'healthy' | 'defects'>('all')
 
   // Modal editing state
   const [modalClass, setModalClass] = useState<string>('healthy')
@@ -136,21 +142,26 @@ export function HumanReviewPage() {
 
   const effectiveOfficerGrade =
     overrideGrade ||
+    backendRecalc?.grade ||
     backendRecalc?.officer_grade ||
     liveMetrics.grade ||
     results?.grade ||
     'Pending'
 
   const effectiveHealthy =
-    backendRecalc?.healthy_count ?? liveMetrics.healthy
+    backendRecalc?.healthyCount ?? backendRecalc?.healthy_count ?? liveMetrics.healthy
   const effectiveDefects =
     backendRecalc !== undefined
-      ? backendRecalc.rotten_damaged_count + backendRecalc.sprouted_count
+      ? (backendRecalc.rottenDamagedCount ?? backendRecalc.rotten_damaged_count ?? 0) +
+        (backendRecalc.sproutedCount ?? backendRecalc.sprouted_count ?? 0)
       : liveMetrics.rottenDamaged + liveMetrics.sprouted
   const effectiveDefectPercentage =
-    backendRecalc?.defect_percentage ?? liveMetrics.defectPercentage
+    backendRecalc?.defectRatio !== undefined
+      ? Math.round(backendRecalc.defectRatio * 1000) / 10
+      : (backendRecalc?.defect_percentage ?? liveMetrics.defectPercentage)
   const overrideCount =
-    backendRecalc?.override_count ?? liveMetrics.overrideCount
+    backendRecalc?.overrideCount ?? backendRecalc?.override_count ?? liveMetrics.overrideCount
+
 
   const aiDefectRate = useMemo(() => {
     const total = results?.totalOnions || detections.length || 1
@@ -245,6 +256,28 @@ export function HumanReviewPage() {
     }
   }
 
+  const attentionQueueOnionIds = useMemo(() => {
+    const set = new Set<string>()
+    if (results?.attentionQueue) {
+      results.attentionQueue.forEach((item) => {
+        if (item.onionId) set.add(item.onionId)
+      })
+    }
+    return set
+  }, [results])
+
+  const attentionCount = useMemo(() => {
+    return detections.filter((det, idx) => {
+      const onionId = String(det.id || det.onion_id || `onion-${idx + 1}`)
+      const isFlagged = attentionQueueOnionIds.has(onionId)
+      const isUncertain = det.final_class === 'uncertain'
+      const isLowConf =
+        typeof det.classification_confidence === 'number' &&
+        det.classification_confidence < 0.65
+      return isFlagged || isUncertain || isLowConf
+    }).length
+  }, [detections, attentionQueueOnionIds])
+
   const filteredDetections = useMemo(() => {
     return detections.filter((det, idx) => {
       const onionId = String(det.id || det.onion_id || `onion-${idx + 1}`)
@@ -253,9 +286,19 @@ export function HumanReviewPage() {
 
       if (filterTab === 'healthy') return currentClass === 'healthy'
       if (filterTab === 'defects') return currentClass !== 'healthy'
+      if (filterTab === 'attention') {
+        const isFlagged = attentionQueueOnionIds.has(onionId)
+        const isUncertain =
+          currentClass === 'uncertain' || det.final_class === 'uncertain'
+        const isLowConf =
+          typeof det.classification_confidence === 'number' &&
+          det.classification_confidence < 0.65
+        return isFlagged || isUncertain || isLowConf
+      }
       return true
     })
-  }, [detections, onionDecisions, filterTab])
+  }, [detections, onionDecisions, filterTab, attentionQueueOnionIds])
+
 
   const aiGradeBadgeStatus =
     (results?.grade || '').toLowerCase().includes('grade a')
@@ -378,9 +421,9 @@ export function HumanReviewPage() {
                   </div>
                 </div>
 
-                {backendRecalc?.explanation ? (
+                {backendRecalc?.gradeExplanation || backendRecalc?.explanation ? (
                   <p className="rounded-lg border border-border bg-surface-muted p-2.5 text-xs text-muted-foreground">
-                    {backendRecalc.explanation}
+                    {backendRecalc.gradeExplanation || backendRecalc.explanation}
                   </p>
                 ) : results.gradeExplanation ? (
                   <p className="rounded-lg border border-border bg-surface-muted p-2.5 text-xs text-muted-foreground">
@@ -388,6 +431,14 @@ export function HumanReviewPage() {
                   </p>
                 ) : null}
               </div>
+
+              {/* Dynamic Evidence-Based Explainability Card */}
+              {backendRecalc?.whyThisGrade || results.whyThisGrade ? (
+                <WhyThisGradeCard
+                  data={backendRecalc?.whyThisGrade || results.whyThisGrade}
+                  compact
+                />
+              ) : null}
 
               {/* Annotated Image Visualization */}
               {imageSrc ? (
@@ -446,6 +497,18 @@ export function HumanReviewPage() {
                   </button>
                   <button
                     type="button"
+                    onClick={() => setFilterTab('attention')}
+                    className={cn(
+                      'flex-1 rounded-md py-1.5 font-medium transition-colors',
+                      filterTab === 'attention'
+                        ? 'bg-card font-semibold text-warning shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    Attention ({attentionCount})
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setFilterTab('healthy')}
                     className={cn(
                       'flex-1 rounded-md py-1.5 font-medium transition-colors',
@@ -469,6 +532,7 @@ export function HumanReviewPage() {
                     Defects ({effectiveDefects})
                   </button>
                 </div>
+
 
                 {/* Onions List */}
                 <div className="space-y-2">
@@ -646,34 +710,80 @@ export function HumanReviewPage() {
       </InspectionStepLayout>
 
       {/* Individual Onion Override Modal */}
-      {selectedOnion ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-2xl space-y-4 animate-in fade-in zoom-in-95">
-            <div className="flex items-center justify-between border-b border-border pb-3">
-              <div>
-                <h3 className="font-bold text-foreground text-sm">
-                  Audit Onion {selectedOnion.display_label || `#${detections.indexOf(selectedOnion) + 1}`}
-                </h3>
-                <p className="text-[11px] text-muted-foreground">
-                  AI: {selectedOnion.final_class?.replace('_', ' ')} • Conf:{' '}
-                  {typeof selectedOnion.classification_confidence === 'number'
-                    ? `${(selectedOnion.classification_confidence * 100).toFixed(1)}%`
-                    : '—'}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedOnion(null)}
-                className="rounded-full p-1 text-muted-foreground hover:bg-surface-muted hover:text-foreground"
-                aria-label="Close dialog"
-              >
-                <X className="size-4" />
-              </button>
-            </div>
+      {selectedOnion ? (() => {
+        const selectedIdx = detections.indexOf(selectedOnion)
+        const selectedOnionId = String(
+          selectedOnion.id || selectedOnion.onion_id || `onion-${selectedIdx + 1}`,
+        )
+        const activeAdaptiveInsight = adaptiveRecs[selectedOnionId]
 
-            {/* Classification selector */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between border-b border-border pb-3">
+                <div>
+                  <h3 className="font-bold text-foreground text-sm">
+                    Audit Onion {selectedOnion.display_label || `#${selectedIdx + 1}`}
+                  </h3>
+                  <p className="text-[11px] text-muted-foreground">
+                    AI: {selectedOnion.final_class?.replace('_', ' ')} • Conf:{' '}
+                    {typeof selectedOnion.classification_confidence === 'number'
+                      ? `${(selectedOnion.classification_confidence * 100).toFixed(1)}%`
+                      : '—'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedOnion(null)}
+                  className="rounded-full p-1 text-muted-foreground hover:bg-surface-muted hover:text-foreground"
+                  aria-label="Close dialog"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+
+              {/* Adaptive Review Intelligence Insight */}
+              {activeAdaptiveInsight && activeAdaptiveInsight.hasAdaptiveInsight ? (
+                <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 text-xs space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 font-bold text-primary">
+                      <Sparkles className="size-4" />
+                      <span>Adaptive Review Intelligence</span>
+                    </div>
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                      {activeAdaptiveInsight.similarCasesCount} similar cases
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    {activeAdaptiveInsight.insightText}
+                  </p>
+                  {activeAdaptiveInsight.toClass ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (activeAdaptiveInsight.toClass) {
+                          setModalClass(activeAdaptiveInsight.toClass)
+                        }
+                        if (
+                          activeAdaptiveInsight.commonReasons &&
+                          activeAdaptiveInsight.commonReasons.length > 0
+                        ) {
+                          setModalReason(activeAdaptiveInsight.commonReasons[0])
+                        }
+                      }}
+                      className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-primary/40 bg-card py-1.5 text-xs font-semibold text-primary shadow-xs transition-all hover:bg-primary/10"
+                    >
+                      <Sparkles className="size-3.5" />
+                      Apply Consensus ({activeAdaptiveInsight.toClass.replace('_', ' ')})
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {/* Classification selector */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">
+
                 Final Quality Classification
               </label>
               <div className="grid grid-cols-2 gap-2">
@@ -793,8 +903,10 @@ export function HumanReviewPage() {
             </div>
           </div>
         </div>
-      ) : null}
+        )
+      })() : null}
     </>
+
   )
 }
 

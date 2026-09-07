@@ -8,3 +8,6 @@ export { SecondaryButton } from './SecondaryButton'
 export { SectionHeader } from './SectionHeader'
 export { StatusBadge } from './StatusBadge'
 export { QrCodeView } from './QrCodeView'
+export { WhyThisGradeCard } from './WhyThisGradeCard'
+export { StandardsMatrix } from './StandardsMatrix'
+

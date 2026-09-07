@@ -18,6 +18,8 @@ export const certificateSchema = z.object({
   officerGrade: z.string().nullable().optional(),
   overrideCount: z.number().optional(),
   dualAssessment: z.record(z.string(), z.any()).nullable().optional(),
+  whyThisGrade: z.record(z.string(), z.any()).nullable().optional(),
+  standardsMatrix: z.array(z.record(z.string(), z.any())).nullable().optional(),
   auditTimeline: z
     .array(
       z.object({
@@ -43,6 +45,10 @@ export const verificationResultSchema = z.object({
   certificate: certificateSchema.nullable().optional(),
   message: z.string(),
   auditTimeline: z.array(auditEventSchema).nullable().optional(),
+  whyThisGrade: z.record(z.string(), z.any()).nullable().optional(),
+  standardsMatrix: z.array(z.record(z.string(), z.any())).nullable().optional(),
+  farmerTransparency: z.record(z.string(), z.any()).nullable().optional(),
 })
 
 export type VerificationResult = z.infer<typeof verificationResultSchema>
+

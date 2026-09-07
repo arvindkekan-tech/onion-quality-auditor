@@ -4,6 +4,7 @@ import { apiClient } from '@/lib/api/client'
 import { useMockApi } from '@/lib/api/config'
 import * as mock from '@/lib/api/mock/inspections.mock'
 import type {
+  AdaptiveInsight,
   AnalysisStatusResponse,
   CreateInspectionInput,
   ImageQualityResult,
@@ -14,6 +15,8 @@ import type {
   OnionDecision,
   RecalculateResponse,
   ReviewInput,
+  ReviewRequestInput,
+  ReviewRequestResponse,
   ReviewResponse,
 } from '@/types/inspection'
 import {
@@ -24,6 +27,7 @@ import {
   inspectionResultSchema,
   inspectionSchema,
   recalculateResponseSchema,
+  reviewRequestResponseSchema,
   reviewResponseSchema,
 } from '@/types/inspection'
 
@@ -118,7 +122,24 @@ export async function recalculateInspection(
 ): Promise<RecalculateResponse> {
   return apiClient.post(
     `/inspections/${inspectionId}/recalculate`,
-    { decisions },
+    { onionDecisions: decisions },
     recalculateResponseSchema,
+  )
+}
+
+export async function getAdaptiveRecommendations(
+  inspectionId: string,
+): Promise<{ recommendations: Record<string, AdaptiveInsight> }> {
+  return apiClient.get(`/inspections/${inspectionId}/adaptive-recommendations`)
+}
+
+export async function submitFarmerReviewRequest(
+  inspectionId: string,
+  input: ReviewRequestInput,
+): Promise<ReviewRequestResponse> {
+  return apiClient.post(
+    `/inspections/${inspectionId}/request-review`,
+    input,
+    reviewRequestResponseSchema,
   )
 }

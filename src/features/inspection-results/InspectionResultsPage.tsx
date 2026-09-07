@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { AlertCircle, Ruler } from 'lucide-react'
+import { AlertCircle, AlertTriangle, ArrowRight, Ruler } from 'lucide-react'
 
 import { InspectionStepLayout } from '@/components/layout/InspectionStepLayout'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -8,7 +8,9 @@ import {
   AlertBanner,
   PrimaryButton,
   ResultCard,
+  StandardsMatrix,
   StatusBadge,
+  WhyThisGradeCard,
 } from '@/components/shared'
 import { useInspectionResults } from '@/features/inspections/hooks'
 import {
@@ -105,6 +107,11 @@ export function InspectionResultsPage() {
                 ) : null}
               </div>
 
+              {/* Explainable AI Decision Engine */}
+              {results.whyThisGrade ? (
+                <WhyThisGradeCard data={results.whyThisGrade} />
+              ) : null}
+
               {/* Zero Detections Alert */}
               {results.totalOnions === 0 ? (
                 <AlertBanner variant="error" title="Zero Onions Detected">
@@ -112,8 +119,58 @@ export function InspectionResultsPage() {
                 </AlertBanner>
               ) : null}
 
-              {/* Attention Alert */}
-              {results.attentionRequired ? (
+              {/* AI Attention Queue */}
+              {results.attentionQueue && results.attentionQueue.length > 0 ? (
+                <section className="space-y-2 rounded-xl border border-warning/30 bg-warning/5 p-4 shadow-soft">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="size-4 text-warning" />
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">
+                        AI Attention Queue ({results.attentionQueue.length})
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => navigate(ROUTES.humanReview(id))}
+                      className="flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+                    >
+                      Audit in Review
+                      <ArrowRight className="size-3" />
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Bulbs requiring inspector attention due to defect uncertainty, borderline size, or anomalous variance.
+                  </p>
+                  <div className="space-y-2 pt-1">
+                    {results.attentionQueue.map((item) => (
+                      <div
+                        key={item.id}
+                        className="rounded-lg border border-border bg-card p-2.5 text-xs shadow-sm"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-foreground">{item.title}</span>
+                          <span
+                            className={cn(
+                              'rounded px-1.5 py-0.5 text-[10px] font-bold uppercase',
+                              item.severity === 'high'
+                                ? 'bg-destructive/10 text-destructive'
+                                : item.severity === 'medium'
+                                  ? 'bg-warning/10 text-warning'
+                                  : 'bg-muted text-muted-foreground',
+                            )}
+                          >
+                            {item.severity} priority
+                          </span>
+                        </div>
+                        <p className="mt-1 text-[11px] text-muted-foreground">{item.reason}</p>
+                        <p className="mt-1 text-[10px] font-medium text-primary">
+                          Action: {item.recommendation}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ) : results.attentionRequired ? (
                 <div className="flex items-start gap-2.5 rounded-xl border border-warning/30 bg-accent p-3 text-xs text-warning-foreground">
                   <AlertCircle className="mt-0.5 size-4 shrink-0 text-warning" />
                   <div>
@@ -290,23 +347,27 @@ export function InspectionResultsPage() {
                 </div>
               </section>
 
-              {/* Requires Physical / Lab Verification */}
-              <section className="space-y-2">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Requires Physical / Lab Verification
-                </h3>
-                <div className="space-y-1.5">
-                  {labVerificationDefects.map((defect) => (
-                    <div
-                      key={defect}
-                      className="flex items-center justify-between rounded-lg border border-dashed border-border bg-surface-muted px-3 py-2 text-sm text-muted-foreground"
-                    >
-                      <span>{defect}</span>
-                      <span className="text-xs">Lab only</span>
-                    </div>
-                  ))}
-                </div>
-              </section>
+              {/* Standards-to-Evidence Verification Matrix */}
+              {results.standardsMatrix && results.standardsMatrix.length > 0 ? (
+                <StandardsMatrix items={results.standardsMatrix} />
+              ) : (
+                <section className="space-y-2">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Requires Physical / Lab Verification
+                  </h3>
+                  <div className="space-y-1.5">
+                    {labVerificationDefects.map((defect) => (
+                      <div
+                        key={defect}
+                        className="flex items-center justify-between rounded-lg border border-dashed border-border bg-surface-muted px-3 py-2 text-sm text-muted-foreground"
+                      >
+                        <span>{defect}</span>
+                        <span className="text-xs">Lab only</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
 
               <AlertBanner variant="info">{VISUAL_DISCLAIMER}</AlertBanner>
             </>

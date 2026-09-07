@@ -4,11 +4,13 @@ import {
   checkImageQuality,
   createInspection,
   deleteInspection,
+  getAdaptiveRecommendations,
   getInspectionHistory,
   getAnalysisStatus,
   getInspectionResults,
   recalculateInspection,
   startAnalysis,
+  submitFarmerReviewRequest,
   submitReview,
   uploadImage,
 } from '@/lib/api/inspections'
@@ -16,6 +18,7 @@ import type {
   CreateInspectionInput,
   OnionDecision,
   ReviewInput,
+  ReviewRequestInput,
 } from '@/types/inspection'
 
 export const inspectionKeys = {
@@ -109,3 +112,19 @@ export function useRecalculateInspection(inspectionId: string) {
       recalculateInspection(inspectionId, decisions),
   })
 }
+
+export function useAdaptiveRecommendations(inspectionId: string, enabled = true) {
+  return useQuery({
+    queryKey: ['inspections', inspectionId, 'adaptive-recommendations'] as const,
+    queryFn: () => getAdaptiveRecommendations(inspectionId),
+    enabled: Boolean(inspectionId) && enabled,
+  })
+}
+
+export function useSubmitFarmerReviewRequest(inspectionId: string) {
+  return useMutation({
+    mutationFn: (input: ReviewRequestInput) =>
+      submitFarmerReviewRequest(inspectionId, input),
+  })
+}
+

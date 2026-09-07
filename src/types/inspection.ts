@@ -67,6 +67,86 @@ export const onionDecisionSchema = z.object({
 
 export type OnionDecision = z.infer<typeof onionDecisionSchema>
 
+export const attentionQueueItemSchema = z.object({
+  id: z.string(),
+  onionId: z
+    .union([z.string(), z.number()])
+    .transform((v) => String(v))
+    .nullable()
+    .optional(),
+  imageId: z.string().nullable().optional(),
+  severity: z.enum(['high', 'medium', 'low']).default('medium'),
+  title: z.string(),
+  reason: z.string(),
+  recommendation: z.string(),
+})
+
+export type AttentionQueueItem = z.infer<typeof attentionQueueItemSchema>
+
+export const standardsMatrixItemSchema = z.object({
+  parameter: z.string(),
+  detectionMethod: z.string(),
+  evidenceStatus: z.string(),
+  procurementThreshold: z.string(),
+  measuredValue: z.string(),
+  compliant: z.boolean().nullable().optional(),
+  requiresManualCheck: z.boolean().default(false),
+})
+
+export type StandardsMatrixItem = z.infer<typeof standardsMatrixItemSchema>
+
+export const whyThisGradeSchema = z.object({
+  sampleSize: z.number().default(0),
+  healthyCount: z.number().default(0),
+  healthyPct: z.number().default(0),
+  defectsCount: z.number().default(0),
+  defectPct: z.number().default(0),
+  rottenDamagedCount: z.number().default(0),
+  sproutedCount: z.number().default(0),
+  uncertainCount: z.number().default(0),
+  grade: z.string(),
+  gradeCode: z.string().optional(),
+  officerOverridesCount: z.number().default(0),
+  narrative: z.string(),
+  thresholds: z.record(z.string(), z.string()).optional(),
+})
+
+export type WhyThisGrade = z.infer<typeof whyThisGradeSchema>
+
+export const adaptiveInsightSchema = z.object({
+  hasAdaptiveInsight: z.boolean(),
+  similarCasesCount: z.number().default(0),
+  correctedCount: z.number().default(0),
+  fromClass: z.string().nullable().optional(),
+  toClass: z.string().nullable().optional(),
+  insightText: z.string().nullable().optional(),
+  recommendation: z.string().nullable().optional(),
+  commonReasons: z.array(z.string()).nullable().optional(),
+})
+
+export type AdaptiveInsight = z.infer<typeof adaptiveInsightSchema>
+
+export const reviewRequestInputSchema = z.object({
+  farmerName: z.string().min(1),
+  phoneNumber: z.string().nullable().optional(),
+  reasonCategory: z.string().min(1),
+  comments: z.string().nullable().optional(),
+})
+
+export type ReviewRequestInput = z.infer<typeof reviewRequestInputSchema>
+
+export const reviewRequestResponseSchema = z.object({
+  id: z.string(),
+  inspectionId: z.string(),
+  farmerName: z.string(),
+  reasonCategory: z.string(),
+  status: z.string(),
+  createdAt: z.string(),
+  message: z.string().nullable().optional(),
+})
+
+export type ReviewRequestResponse = z.infer<typeof reviewRequestResponseSchema>
+
 export const inspectionResultSchema = z.object({
   inspectionId: z.string(),
   grade: z.string(),
@@ -97,6 +177,9 @@ export const inspectionResultSchema = z.object({
   imagesResults: z.array(imageAnalysisSummarySchema).nullable().optional(),
   aiAssessment: z.record(z.string(), z.any()).nullable().optional(),
   officerAssessment: z.record(z.string(), z.any()).nullable().optional(),
+  attentionQueue: z.array(attentionQueueItemSchema).nullable().optional(),
+  whyThisGrade: whyThisGradeSchema.nullable().optional(),
+  standardsMatrix: z.array(standardsMatrixItemSchema).nullable().optional(),
 })
 
 export type InspectionResult = z.infer<typeof inspectionResultSchema>
@@ -171,15 +254,31 @@ export const reviewResponseSchema = z.object({
 export type ReviewResponse = z.infer<typeof reviewResponseSchema>
 
 export const recalculateResponseSchema = z.object({
-  ai_grade: z.string(),
-  officer_grade: z.string(),
-  healthy_count: z.number(),
-  rotten_damaged_count: z.number(),
-  sprouted_count: z.number(),
-  uncertain_count: z.number(),
-  defect_percentage: z.number(),
-  override_count: z.number(),
-  explanation: z.string(),
+  totalOnions: z.number(),
+  healthyCount: z.number(),
+  rottenDamagedCount: z.number(),
+  sproutedCount: z.number(),
+  uncertainCount: z.number(),
+  defectRatio: z.number().optional(),
+  healthyPct: z.number().optional(),
+  rottenPct: z.number().optional(),
+  sproutedPct: z.number().optional(),
+  uncertainPct: z.number().optional(),
+  grade: z.string(),
+  gradeExplanation: z.string().optional(),
+  overrideCount: z.number().default(0),
+  whyThisGrade: whyThisGradeSchema.nullable().optional(),
+  standardsMatrix: z.array(standardsMatrixItemSchema).nullable().optional(),
+  ai_grade: z.string().optional(),
+  officer_grade: z.string().optional(),
+  healthy_count: z.number().optional(),
+  rotten_damaged_count: z.number().optional(),
+  sprouted_count: z.number().optional(),
+  uncertain_count: z.number().optional(),
+  defect_percentage: z.number().optional(),
+  override_count: z.number().optional(),
+  explanation: z.string().optional(),
 })
 
 export type RecalculateResponse = z.infer<typeof recalculateResponseSchema>
+
