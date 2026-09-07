@@ -36,9 +36,12 @@ app.include_router(analysis_router)
 app.include_router(certificates_router)
 
 
+from app.api.health import get_system_health
+
+
 @app.get("/health", tags=["health"])
-def root_health() -> dict[str, str]:
-    return {"status": "ok", "service": "onivis-api"}
+def root_health() -> dict:
+    return get_system_health()
 
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
@@ -57,11 +60,11 @@ async def http_exception_handler(_request: Request, exc: HTTPException) -> JSONR
 @app.exception_handler(PersistenceError)
 async def persistence_exception_handler(
     _request: Request,
-    _exc: PersistenceError,
+    exc: PersistenceError,
 ) -> JSONResponse:
     return JSONResponse(
         status_code=503,
-        content={"message": "Persistence service unavailable", "code": "persistence_error"},
+        content={"message": str(exc), "code": "persistence_error"},
     )
 
 

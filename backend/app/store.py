@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Literal
@@ -17,6 +18,8 @@ from app.store_types import (
     StoredInspection,
 )
 
+logger = logging.getLogger("onivis")
+
 
 class PersistenceError(RuntimeError):
     """Raised when persistence cannot complete an operation."""
@@ -30,7 +33,42 @@ def new_id(prefix: str) -> str:
     return f"{prefix}-{uuid4().hex[:8]}"
 
 
+_supabase_disabled = False
+_supabase_error_reason: str | None = None
+
+
+def check_supabase_health(force_recheck: bool = False) -> tuple[bool, str | None]:
+    global _supabase_disabled, _supabase_error_reason
+    if _supabase_disabled and not force_recheck:
+        return False, _supabase_error_reason
+
+    try:
+        client = get_supabase_client()
+        if client is None:
+            return False, "Supabase client is None"
+        client.table("inspections").select("id").limit(1).execute()
+        _supabase_disabled = False
+        _supabase_error_reason = None
+        return True, None
+    except Exception as exc:
+        _supabase_disabled = True
+        _supabase_error_reason = str(exc)
+        logger.warning("[PERSISTENCE] Supabase connectivity check failed: %s. Using SQLite local_store.", exc)
+        return False, _supabase_error_reason
+
+
+def disable_supabase_and_fallback(reason: str) -> None:
+    global _supabase_disabled, _supabase_error_reason
+    if not _supabase_disabled:
+        logger.error("[PERSISTENCE] Supabase runtime failure (%s). Failing over to SQLite local_store.", reason)
+    _supabase_disabled = True
+    _supabase_error_reason = reason
+
+
 def _is_supabase_active() -> bool:
+    global _supabase_disabled
+    if _supabase_disabled:
+        return False
     try:
         client = get_supabase_client()
         return client is not None
@@ -53,7 +91,8 @@ def _execute(operation: Any) -> Any:
     try:
         return operation.execute()
     except Exception as exc:
-        raise PersistenceError("Persistence operation failed") from exc
+        disable_supabase_and_fallback(str(exc))
+        raise PersistenceError(f"Supabase operation failed: {exc}") from exc
 
 
 def _image_from_row(row: dict[str, Any]) -> StoredImage:
@@ -121,7 +160,7 @@ def _inspection_from_row(row: dict[str, Any]) -> StoredInspection:
             "gradeExplanation": result_row.get("grade_explanation"),
             "attentionRequired": bool(result_row.get("attention_required", False)),
             "attentionReason": result_row.get("attention_reason"),
-            "imagesResults": result_row.get("images_results"),
+            "imagesResults": result_row.get("imagesResults"),
             "aiAssessment": result_row.get("ai_assessment"),
             "officerAssessment": result_row.get("officer_assessment"),
         }
@@ -173,67 +212,84 @@ def create_inspection(
     created_at: str,
     user_id: str | None = None,
 ) -> StoredInspection:
-    if not _is_supabase_active():
-        return local_store.create_inspection(
-            id=id,
-            variety=variety,
-            weight_kg=weight_kg,
-            location=location,
-            created_at=created_at,
-            user_id=user_id,
-        )
-    row = {
-        "id": id,
-        "variety": variety,
-        "weight_kg": weight_kg,
-        "location": location,
-        "created_at": created_at,
-        "status": "draft",
-        "analysis_status": None,
-        "analysis_poll_count": 0,
-        "user_id": user_id,
-    }
-    response = _execute(_client().table("inspections").insert(row))
-    created = _first(response)
-    if created is None:
-        raise PersistenceError("Supabase did not return the created inspection")
-    return _inspection_from_row(created)
+    if _is_supabase_active():
+        try:
+            row = {
+                "id": id,
+                "variety": variety,
+                "weight_kg": weight_kg,
+                "location": location,
+                "created_at": created_at,
+                "status": "draft",
+                "analysis_status": None,
+                "analysis_poll_count": 0,
+                "user_id": user_id,
+            }
+            response = _execute(_client().table("inspections").insert(row))
+            created = _first(response)
+            if created is not None:
+                return _inspection_from_row(created)
+        except Exception as exc:
+            disable_supabase_and_fallback(f"create_inspection failed: {exc}")
+
+    return local_store.create_inspection(
+        id=id,
+        variety=variety,
+        weight_kg=weight_kg,
+        location=location,
+        created_at=created_at,
+        user_id=user_id,
+    )
 
 
 def get_inspection(inspection_id: str, user_id: str | None = None) -> StoredInspection | None:
-    if not _is_supabase_active():
-        return local_store.get_inspection(inspection_id, user_id=user_id)
-    row = _get_inspection_row(inspection_id)
-    if not row:
-        return None
-    if user_id is not None and row.get("user_id") and row.get("user_id") != user_id:
-        return None
-    return _inspection_from_row(row)
+    if _is_supabase_active():
+        try:
+            row = _get_inspection_row(inspection_id)
+            if row:
+                if user_id is not None and row.get("user_id") and row.get("user_id") != user_id:
+                    return None
+                return _inspection_from_row(row)
+            return None
+        except Exception as exc:
+            disable_supabase_and_fallback(f"get_inspection failed: {exc}")
+
+    return local_store.get_inspection(inspection_id, user_id=user_id)
 
 
 def list_inspections(user_id: str | None = None) -> list[StoredInspection]:
-    if not _is_supabase_active():
-        return local_store.list_inspections(user_id=user_id)
-    query = _client().table("inspections").select("*")
-    if user_id is not None:
-        query = query.eq("user_id", user_id)
-    response = _execute(query.order("created_at", desc=True))
-    return [_inspection_from_row(row) for row in response.data or []]
+    if _is_supabase_active():
+        try:
+            query = _client().table("inspections").select("*")
+            if user_id is not None:
+                query = query.eq("user_id", user_id)
+            response = _execute(query.order("created_at", desc=True))
+            return [_inspection_from_row(row) for row in response.data or []]
+        except Exception as exc:
+            disable_supabase_and_fallback(f"list_inspections failed: {exc}")
+
+    return local_store.list_inspections(user_id=user_id)
 
 
 def get_image(inspection_id: str, image_id: str) -> StoredImage | None:
-    if not _is_supabase_active():
-        return local_store.get_image(inspection_id, image_id)
-    response = _execute(
-        _client()
-        .table("inspection_images")
-        .select("*")
-        .eq("inspection_id", inspection_id)
-        .eq("id", image_id)
-        .limit(1)
-    )
-    row = _first(response)
-    return _image_from_row(row) if row else None
+    if _is_supabase_active():
+        try:
+            response = _execute(
+                _client()
+                .table("inspection_images")
+                .select("*")
+                .eq("inspection_id", inspection_id)
+                .eq("id", image_id)
+                .limit(1)
+            )
+            row = _first(response)
+            if row:
+                return _image_from_row(row)
+            return None
+        except Exception as exc:
+            disable_supabase_and_fallback(f"get_image failed: {exc}")
+
+    return local_store.get_image(inspection_id, image_id)
 
 
 def create_image(
@@ -246,94 +302,108 @@ def create_image(
     storage_path: str,
     url: str,
 ) -> StoredImage:
-    if not _is_supabase_active():
-        return local_store.create_image(
-            id=id,
-            inspection_id=inspection_id,
-            uploaded_at=uploaded_at,
-            filename=filename,
-            content_type=content_type,
-            storage_path=storage_path,
-            url=url,
-        )
-    response = _execute(
-        _client()
-        .table("inspection_images")
-        .insert(
-            {
-                "id": id,
-                "inspection_id": inspection_id,
-                "uploaded_at": uploaded_at,
-                "filename": filename,
-                "content_type": content_type,
-                "storage_path": storage_path,
-                "url": url,
-            }
-        )
+    if _is_supabase_active():
+        try:
+            response = _execute(
+                _client()
+                .table("inspection_images")
+                .insert(
+                    {
+                        "id": id,
+                        "inspection_id": inspection_id,
+                        "uploaded_at": uploaded_at,
+                        "filename": filename,
+                        "content_type": content_type,
+                        "storage_path": storage_path,
+                        "url": url,
+                    }
+                )
+            )
+            row = _first(response)
+            if row is not None:
+                try:
+                    _execute(
+                        _client()
+                        .table("inspections")
+                        .update({"status": "in_progress"})
+                        .eq("id", inspection_id)
+                    )
+                except Exception:
+                    pass
+                return _image_from_row(row)
+        except Exception as exc:
+            disable_supabase_and_fallback(f"create_image failed: {exc}")
+
+    return local_store.create_image(
+        id=id,
+        inspection_id=inspection_id,
+        uploaded_at=uploaded_at,
+        filename=filename,
+        content_type=content_type,
+        storage_path=storage_path,
+        url=url,
     )
-    row = _first(response)
-    if row is None:
-        raise PersistenceError("Supabase did not return the created image")
-    try:
-        _execute(
-            _client()
-            .table("inspections")
-            .update({"status": "in_progress"})
-            .eq("id", inspection_id)
-        )
-    except PersistenceError:
-        _execute(_client().table("inspection_images").delete().eq("id", id))
-        raise
-    return _image_from_row(row)
 
 
 def update_inspection(inspection_id: str, values: dict[str, Any]) -> None:
-    if not _is_supabase_active():
-        local_store.update_inspection(inspection_id, values)
-        return
-    _execute(_client().table("inspections").update(values).eq("id", inspection_id))
+    if _is_supabase_active():
+        try:
+            _execute(_client().table("inspections").update(values).eq("id", inspection_id))
+            return
+        except Exception as exc:
+            disable_supabase_and_fallback(f"update_inspection failed: {exc}")
+
+    local_store.update_inspection(inspection_id, values)
 
 
 def delete_inspection(inspection_id: str, user_id: str | None = None) -> None:
-    if not _is_supabase_active():
-        local_store.delete_inspection(inspection_id, user_id=user_id)
-        return
-    query = _client().table("inspections").delete().eq("id", inspection_id)
-    if user_id is not None:
-        query = query.eq("user_id", user_id)
-    _execute(query)
+    if _is_supabase_active():
+        try:
+            query = _client().table("inspections").delete().eq("id", inspection_id)
+            if user_id is not None:
+                query = query.eq("user_id", user_id)
+            _execute(query)
+            return
+        except Exception as exc:
+            disable_supabase_and_fallback(f"delete_inspection failed: {exc}")
+
+    local_store.delete_inspection(inspection_id, user_id=user_id)
 
 
 def save_analysis_result(inspection_id: str, result: dict[str, Any]) -> None:
-    if not _is_supabase_active():
-        local_store.save_analysis_result(inspection_id, result)
-        return
-    row = {
-        "inspection_id": inspection_id,
-        "grade": result["grade"],
-        "confidence": result["confidence"],
-        "classification": result.get("classification"),
-        "total_onions": result.get("totalOnions"),
-        "model_name": result.get("modelName"),
-        "defects": result["defects"],
-        "summary": result["summary"],
-        "analyzed_at": result["analyzedAt"],
-        "healthy_count": result.get("healthyCount"),
-        "rotten_damaged_count": result.get("rottenDamagedCount"),
-        "sprouted_count": result.get("sproutedCount"),
-        "uncertain_count": result.get("uncertainCount"),
-        "annotated_image_url": result.get("annotatedImageUrl"),
-        "annotated_image_path": result.get("annotatedImagePath"),
-        "size_estimation": result.get("sizeEstimation"),
-        "detections": result.get("detections"),
-        "grade_explanation": result.get("gradeExplanation"),
-        "attention_required": result.get("attentionRequired", False),
-        "attention_reason": result.get("attentionReason"),
-        "images_results": result.get("imagesResults"),
-        "ai_assessment": result.get("aiAssessment"),
-        "officer_assessment": result.get("officerAssessment"),
-    }
-    _execute(_client().table("analysis_results").upsert(row))
+    if _is_supabase_active():
+        try:
+            row = {
+                "inspection_id": inspection_id,
+                "grade": result["grade"],
+                "confidence": result["confidence"],
+                "classification": result.get("classification"),
+                "total_onions": result.get("totalOnions"),
+                "model_name": result.get("modelName"),
+                "defects": result["defects"],
+                "summary": result["summary"],
+                "analyzed_at": result["analyzedAt"],
+                "healthy_count": result.get("healthyCount"),
+                "rotten_damaged_count": result.get("rottenDamagedCount"),
+                "sprouted_count": result.get("sproutedCount"),
+                "uncertain_count": result.get("uncertainCount"),
+                "annotated_image_url": result.get("annotatedImageUrl"),
+                "annotated_image_path": result.get("annotatedImagePath"),
+                "size_estimation": result.get("sizeEstimation"),
+                "detections": result.get("detections"),
+                "grade_explanation": result.get("gradeExplanation"),
+                "attention_required": result.get("attentionRequired", False),
+                "attention_reason": result.get("attentionReason"),
+                "images_results": result.get("imagesResults"),
+                "ai_assessment": result.get("aiAssessment"),
+                "officer_assessment": result.get("officerAssessment"),
+            }
+            _execute(_client().table("analysis_results").upsert(row))
+            return
+        except Exception as exc:
+            disable_supabase_and_fallback(f"save_analysis_result failed: {exc}")
+
+    local_store.save_analysis_result(inspection_id, result)
 
 
 def _certificate_from_row(row: dict[str, Any]) -> dict[str, Any]:
@@ -364,174 +434,186 @@ def save_review_and_certificate(
     review: dict[str, Any],
     certificate: dict[str, Any],
 ) -> None:
-    if not _is_supabase_active():
-        local_store.save_review_and_certificate(inspection_id, review, certificate)
-        return
-    certificate_row = {
-        "id": certificate["id"],
-        "inspection_id": inspection_id,
-        "grade": certificate["grade"],
-        "issued_at": certificate["issuedAt"],
-        "batch_label": certificate["batchLabel"],
-        "qr_token": certificate["qrToken"],
-        "inspector_name": certificate.get("inspectorName"),
-        "batch_id": certificate.get("batchId"),
-        "procurement_centre": certificate.get("procurementCentre"),
-        "specification": certificate.get("specification"),
-        "sample_size": certificate.get("sampleSize"),
-        "confidence": certificate.get("confidence"),
-        "defect_summary": certificate.get("defectSummary"),
-        "audit_timeline": certificate.get("auditTimeline"),
-        "ai_grade": certificate.get("aiGrade"),
-        "officer_grade": certificate.get("officerGrade") or certificate["grade"],
-        "override_count": certificate.get("overrideCount", 0),
-        "dual_assessment": certificate.get("dualAssessment"),
-    }
-    _execute(_client().table("certificates").insert(certificate_row))
-    try:
-        _execute(
-            _client()
-            .table("reviews")
-            .upsert(
-                {
-                    "inspection_id": inspection_id,
-                    "certificate_id": certificate["id"],
-                    "approved": review["approved"],
-                    "notes": review.get("notes"),
-                    "override_grade": review.get("overrideGrade"),
-                    "reviewed_at": certificate["issuedAt"],
-                }
+    if _is_supabase_active():
+        try:
+            certificate_row = {
+                "id": certificate["id"],
+                "inspection_id": inspection_id,
+                "grade": certificate["grade"],
+                "issued_at": certificate["issuedAt"],
+                "batch_label": certificate["batchLabel"],
+                "qr_token": certificate["qrToken"],
+                "inspector_name": certificate.get("inspectorName"),
+                "batch_id": certificate.get("batchId"),
+                "procurement_centre": certificate.get("procurementCentre"),
+                "specification": certificate.get("specification"),
+                "sample_size": certificate.get("sampleSize"),
+                "confidence": certificate.get("confidence"),
+                "defect_summary": certificate.get("defectSummary"),
+                "audit_timeline": certificate.get("auditTimeline"),
+                "ai_grade": certificate.get("aiGrade"),
+                "officer_grade": certificate.get("officerGrade") or certificate["grade"],
+                "override_count": certificate.get("overrideCount", 0),
+                "dual_assessment": certificate.get("dualAssessment"),
+            }
+            _execute(_client().table("certificates").insert(certificate_row))
+            _execute(
+                _client()
+                .table("reviews")
+                .upsert(
+                    {
+                        "inspection_id": inspection_id,
+                        "certificate_id": certificate["id"],
+                        "approved": review["approved"],
+                        "notes": review.get("notes"),
+                        "override_grade": review.get("overrideGrade"),
+                        "reviewed_at": certificate["issuedAt"],
+                    }
+                )
             )
-        )
-    except PersistenceError:
-        _execute(
-            _client().table("certificates").delete().eq("id", certificate["id"])
-        )
-        raise
-    try:
-        update_inspection(inspection_id, {"status": "reviewed"})
-    except PersistenceError:
-        _execute(
-            _client().table("reviews").delete().eq("inspection_id", inspection_id)
-        )
-        _execute(
-            _client().table("certificates").delete().eq("id", certificate["id"])
-        )
-        raise
+            update_inspection(inspection_id, {"status": "reviewed"})
+            return
+        except Exception as exc:
+            disable_supabase_and_fallback(f"save_review_and_certificate failed: {exc}")
+
+    local_store.save_review_and_certificate(inspection_id, review, certificate)
 
 
 def save_review_rejection(
     inspection_id: str,
     review: dict[str, Any],
 ) -> None:
-    if not _is_supabase_active():
-        local_store.save_review_rejection(inspection_id, review)
-        return
-    # Delete certificate if exists
-    try:
-        _execute(_client().table("certificates").delete().eq("inspection_id", inspection_id))
-    except Exception:
-        pass
-    _execute(
-        _client()
-        .table("reviews")
-        .upsert(
-            {
-                "inspection_id": inspection_id,
-                "certificate_id": None,
-                "approved": False,
-                "notes": review.get("notes"),
-                "override_grade": review.get("overrideGrade"),
-                "reviewed_at": utc_now_iso(),
-            }
-        )
-    )
-    update_inspection(inspection_id, {"status": "rejected"})
+    if _is_supabase_active():
+        try:
+            try:
+                _execute(_client().table("certificates").delete().eq("inspection_id", inspection_id))
+            except Exception:
+                pass
+            _execute(
+                _client()
+                .table("reviews")
+                .upsert(
+                    {
+                        "inspection_id": inspection_id,
+                        "certificate_id": None,
+                        "approved": False,
+                        "notes": review.get("notes"),
+                        "override_grade": review.get("overrideGrade"),
+                        "reviewed_at": utc_now_iso(),
+                    }
+                )
+            )
+            update_inspection(inspection_id, {"status": "rejected"})
+            return
+        except Exception as exc:
+            disable_supabase_and_fallback(f"save_review_rejection failed: {exc}")
+
+    local_store.save_review_rejection(inspection_id, review)
 
 
 def get_certificate(certificate_id: str) -> dict[str, Any] | None:
-    if not _is_supabase_active():
-        return local_store.get_certificate(certificate_id)
-    response = _execute(
-        _client()
-        .table("certificates")
-        .select("*")
-        .eq("id", certificate_id)
-        .limit(1)
-    )
-    row = _first(response)
-    return _certificate_from_row(row) if row else None
+    if _is_supabase_active():
+        try:
+            response = _execute(
+                _client()
+                .table("certificates")
+                .select("*")
+                .eq("id", certificate_id)
+                .limit(1)
+            )
+            row = _first(response)
+            if row:
+                return _certificate_from_row(row)
+            return None
+        except Exception as exc:
+            disable_supabase_and_fallback(f"get_certificate failed: {exc}")
+
+    return local_store.get_certificate(certificate_id)
 
 
 def get_certificate_by_token(token: str) -> dict[str, Any] | None:
-    if not _is_supabase_active():
-        return local_store.get_certificate_by_token(token)
-    response = _execute(
-        _client()
-        .table("certificates")
-        .select("*")
-        .eq("qr_token", token)
-        .limit(1)
-    )
-    row = _first(response)
-    return _certificate_from_row(row) if row else None
+    if _is_supabase_active():
+        try:
+            response = _execute(
+                _client()
+                .table("certificates")
+                .select("*")
+                .eq("qr_token", token)
+                .limit(1)
+            )
+            row = _first(response)
+            if row:
+                return _certificate_from_row(row)
+            return None
+        except Exception as exc:
+            disable_supabase_and_fallback(f"get_certificate_by_token failed: {exc}")
+
+    return local_store.get_certificate_by_token(token)
 
 
 def save_onion_decisions(inspection_id: str, decisions: list[dict[str, Any]]) -> None:
     if not decisions:
         return
-    if not _is_supabase_active():
-        local_store.save_onion_decisions(inspection_id, decisions)
-        return
-    rows = [
-        {
-            "id": d.get("id") or f"dec-{d.get('onionId', '')}-{uuid4().hex[:6]}",
-            "inspection_id": inspection_id,
-            "onion_id": d.get("onionId", ""),
-            "image_id": d.get("imageId"),
-            "ai_class": d.get("aiClass", "unknown"),
-            "officer_class": d.get("officerClass", "unknown"),
-            "final_class": d.get("finalClass") or d.get("officerClass", "unknown"),
-            "ai_size": d.get("aiSize"),
-            "officer_size": d.get("officerSize"),
-            "final_size": d.get("finalSize") or d.get("officerSize"),
-            "reason": d.get("reason"),
-            "officer_name": d.get("officerName"),
-            "created_at": d.get("createdAt") or utc_now_iso(),
-        }
-        for d in decisions
-    ]
-    _execute(_client().table("onion_decisions").upsert(rows))
+    if _is_supabase_active():
+        try:
+            rows = [
+                {
+                    "id": d.get("id") or f"dec-{d.get('onionId', '')}-{uuid4().hex[:6]}",
+                    "inspection_id": inspection_id,
+                    "onion_id": d.get("onionId", ""),
+                    "image_id": d.get("imageId"),
+                    "ai_class": d.get("aiClass", "unknown"),
+                    "officer_class": d.get("officerClass", "unknown"),
+                    "final_class": d.get("finalClass") or d.get("officerClass", "unknown"),
+                    "ai_size": d.get("aiSize"),
+                    "officer_size": d.get("officerSize"),
+                    "final_size": d.get("finalSize") or d.get("officerSize"),
+                    "reason": d.get("reason"),
+                    "officer_name": d.get("officerName"),
+                    "created_at": d.get("createdAt") or utc_now_iso(),
+                }
+                for d in decisions
+            ]
+            _execute(_client().table("onion_decisions").upsert(rows))
+            return
+        except Exception as exc:
+            disable_supabase_and_fallback(f"save_onion_decisions failed: {exc}")
+
+    local_store.save_onion_decisions(inspection_id, decisions)
 
 
 def get_onion_decisions(inspection_id: str) -> list[dict[str, Any]]:
-    if not _is_supabase_active():
-        return local_store.get_onion_decisions(inspection_id)
-    response = _execute(
-        _client()
-        .table("onion_decisions")
-        .select("*")
-        .eq("inspection_id", inspection_id)
-        .order("created_at")
-    )
-    return [
-        {
-            "id": r["id"],
-            "inspectionId": r["inspection_id"],
-            "onionId": r["onion_id"],
-            "imageId": r.get("image_id"),
-            "aiClass": r["ai_class"],
-            "officerClass": r["officer_class"],
-            "finalClass": r["final_class"],
-            "aiSize": r.get("ai_size"),
-            "officerSize": r.get("officer_size"),
-            "finalSize": r.get("final_size"),
-            "reason": r.get("reason"),
-            "officerName": r.get("officer_name"),
-            "createdAt": r["created_at"],
-        }
-        for r in response.data or []
-    ]
+    if _is_supabase_active():
+        try:
+            response = _execute(
+                _client()
+                .table("onion_decisions")
+                .select("*")
+                .eq("inspection_id", inspection_id)
+                .order("created_at")
+            )
+            return [
+                {
+                    "id": r["id"],
+                    "inspectionId": r["inspection_id"],
+                    "onionId": r["onion_id"],
+                    "imageId": r.get("image_id"),
+                    "aiClass": r["ai_class"],
+                    "officerClass": r["officer_class"],
+                    "finalClass": r["final_class"],
+                    "aiSize": r.get("ai_size"),
+                    "officerSize": r.get("officer_size"),
+                    "finalSize": r.get("final_size"),
+                    "reason": r.get("reason"),
+                    "officerName": r.get("officer_name"),
+                    "createdAt": r["created_at"],
+                }
+                for r in response.data or []
+            ]
+        except Exception as exc:
+            disable_supabase_and_fallback(f"get_onion_decisions failed: {exc}")
+
+    return local_store.get_onion_decisions(inspection_id)
 
 
 def create_user(
@@ -543,7 +625,7 @@ def create_user(
     role: str = "INSPECTOR",
     created_at: str,
 ) -> dict[str, Any]:
-    return local_store.create_user(
+    user = local_store.create_user(
         id=id,
         email=email,
         password_hash=password_hash,
@@ -551,10 +633,36 @@ def create_user(
         role=role,
         created_at=created_at,
     )
+    if _is_supabase_active():
+        try:
+            _client().table("users").upsert({
+                "id": id,
+                "email": email.lower().strip(),
+                "password_hash": password_hash,
+                "name": name,
+                "role": role,
+                "created_at": created_at,
+            }).execute()
+        except Exception as exc:
+            logger.warning("[PERSISTENCE] Could not mirror user to Supabase: %s", exc)
+    return user
 
 
 def get_user_by_email(email: str) -> dict[str, Any] | None:
-    return local_store.get_user_by_email(email)
+    user = local_store.get_user_by_email(email)
+    if user and _is_supabase_active():
+        try:
+            _client().table("users").upsert({
+                "id": user["id"],
+                "email": user["email"],
+                "password_hash": user["password_hash"],
+                "name": user["name"],
+                "role": user["role"],
+                "created_at": user.get("created_at") or utc_now_iso(),
+            }).execute()
+        except Exception:
+            pass
+    return user
 
 
 def get_user_by_id(user_id: str) -> dict[str, Any] | None:
@@ -584,12 +692,65 @@ def save_review_request(
     reason_category: str,
     comments: str | None,
 ) -> dict[str, Any]:
+    if _is_supabase_active():
+        try:
+            row = {
+                "id": new_id("req"),
+                "inspection_id": inspection_id,
+                "farmer_name": farmer_name,
+                "phone_number": phone_number,
+                "reason_category": reason_category,
+                "comments": comments,
+                "status": "PENDING",
+                "created_at": utc_now_iso(),
+            }
+            res = _execute(_client().table("review_requests").insert(row))
+            created = _first(res)
+            if created:
+                return {
+                    "id": created["id"],
+                    "inspectionId": created["inspection_id"],
+                    "farmerName": created["farmer_name"],
+                    "phoneNumber": created.get("phone_number"),
+                    "reasonCategory": created["reason_category"],
+                    "comments": created.get("comments"),
+                    "status": created["status"],
+                    "createdAt": created["created_at"],
+                }
+        except Exception as exc:
+            disable_supabase_and_fallback(f"save_review_request failed: {exc}")
+
     return local_store.save_review_request(
         inspection_id, farmer_name, phone_number, reason_category, comments
     )
 
 
 def get_review_requests(inspection_id: str) -> list[dict[str, Any]]:
+    if _is_supabase_active():
+        try:
+            res = _execute(
+                _client()
+                .table("review_requests")
+                .select("*")
+                .eq("inspection_id", inspection_id)
+                .order("created_at", desc=True)
+            )
+            return [
+                {
+                    "id": r["id"],
+                    "inspectionId": r["inspection_id"],
+                    "farmerName": r["farmer_name"],
+                    "phoneNumber": r.get("phone_number"),
+                    "reasonCategory": r["reason_category"],
+                    "comments": r.get("comments"),
+                    "status": r["status"],
+                    "createdAt": r["created_at"],
+                }
+                for r in res.data or []
+            ]
+        except Exception as exc:
+            disable_supabase_and_fallback(f"get_review_requests failed: {exc}")
+
     return local_store.get_review_requests(inspection_id)
 
 

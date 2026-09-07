@@ -196,7 +196,8 @@ def test_health_and_root() -> None:
 
     health = client.get("/api/v1/health")
     assert health.status_code == 200
-    assert health.json() == {"status": "ok", "service": "onivis-api"}
+    assert health.json()["status"] == "ok"
+    assert health.json()["service"] == "onivis-api"
 
 
 def test_full_inspection_flow() -> None:
