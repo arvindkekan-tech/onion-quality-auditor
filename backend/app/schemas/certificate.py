@@ -27,6 +27,8 @@ class Certificate(BaseModel):
     officerGrade: str | None = None
     overrideCount: int = 0
     dualAssessment: dict[str, object] | None = None
+    whyThisGrade: dict[str, object] | None = None
+    standardsMatrix: list[dict[str, object]] | None = None
 
 
 class VerificationResult(BaseModel):
@@ -36,3 +38,6 @@ class VerificationResult(BaseModel):
     message: str
     certificate: Certificate | None = None
     auditTimeline: list[AuditEvent] | None = None
+    whyThisGrade: dict[str, object] | None = None
+    standardsMatrix: list[dict[str, object]] | None = None
+    farmerTransparency: dict[str, object] | None = None

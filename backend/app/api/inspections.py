@@ -1,3 +1,5 @@
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 
 from app.core.auth import AuthenticatedUser, get_optional_user
@@ -9,6 +11,8 @@ from app.schemas.analysis import (
     RecalculateRequest,
     RecalculateResponse,
     ReviewInput,
+    ReviewRequestInput,
+    ReviewRequestResponse,
     ReviewResponse,
 )
 from app.schemas.inspection import (
@@ -443,6 +447,7 @@ def _compute_officer_metrics(
         sprouted_count=officer_sprouted,
         uncertain_count=officer_uncertain,
         average_confidence=ai_conf,
+        officer_overrides_count=len(decisions),
     )
     final_grade = override_grade or calc_res.grade
     metrics = {
@@ -455,6 +460,10 @@ def _compute_officer_metrics(
         "defectRatio": round((officer_rotten + officer_sprouted) / officer_total, 4) if officer_total > 0 else 0.0,
         "confidence": ai_conf,
         "overrideCount": len(decisions),
+        "explanation": calc_res.explanation,
+        "whyThisGrade": calc_res.why_this_grade,
+        "standardsMatrix": calc_res.standards_matrix,
+        "attentionQueue": calc_res.attention_queue,
     }
     return metrics, final_grade, len(decisions)
 
@@ -550,6 +559,14 @@ async def submit_review(
                 },
             },
         }
+        result["officerAssessment"] = metrics
+        if metrics.get("whyThisGrade"):
+            result["whyThisGrade"] = metrics["whyThisGrade"]
+        if metrics.get("standardsMatrix"):
+            result["standardsMatrix"] = metrics["standardsMatrix"]
+        if metrics.get("attentionQueue"):
+            result["attentionQueue"] = metrics["attentionQueue"]
+        store.save_analysis_result(inspection_id, result)
         store.save_review_and_certificate(
             inspection_id,
             {
@@ -619,6 +636,8 @@ def recalculate_inspection(
         grade=final_grade,
         gradeExplanation=metrics.get("explanation") or f"Officer grade: {final_grade}",
         overrideCount=count,
+        whyThisGrade=metrics.get("whyThisGrade"),
+        standardsMatrix=metrics.get("standardsMatrix"),
     )
 
 
@@ -630,3 +649,52 @@ def get_inspection_decisions(
     _require_inspection(inspection_id, user=user)
     decisions = store.get_onion_decisions(inspection_id)
     return [OnionDecisionResponse.model_validate(d) for d in decisions]
+
+
+@router.get("/{inspection_id}/adaptive-recommendations")
+def get_adaptive_recommendations(
+    inspection_id: str,
+    user: AuthenticatedUser | None = Depends(get_optional_user),
+) -> dict[str, Any]:
+    inspection = _require_inspection(inspection_id, user=user)
+    if not inspection.result:
+        return {"recommendations": {}}
+    detections = inspection.result.get("detections") or []
+    recommendations: dict[str, Any] = {}
+    for idx, det in enumerate(detections, start=1):
+        onion_id = det.get("id") or det.get("onion_id") or f"onion_{idx}"
+        cls_name = det.get("final_class") or det.get("classification") or det.get("predicted_class") or "healthy"
+        conf = float(det.get("confidence", 0.0) or det.get("classification_confidence", 0.0) or 0.0)
+        rec = store.get_adaptive_recommendation(cls_name, conf)
+        if rec.get("hasAdaptiveInsight"):
+            recommendations[onion_id] = rec
+    return {"recommendations": recommendations}
+
+
+@router.post("/{inspection_id}/request-review", response_model=ReviewRequestResponse)
+def request_farmer_review(
+    inspection_id: str,
+    payload: ReviewRequestInput,
+) -> ReviewRequestResponse:
+    inspection = store.get_inspection(inspection_id)
+    if not inspection:
+        raise HTTPException(status_code=404, detail="Inspection not found.")
+    res = store.save_review_request(
+        inspection_id=inspection_id,
+        farmer_name=payload.farmerName,
+        phone_number=payload.phoneNumber,
+        reason_category=payload.reasonCategory,
+        comments=payload.comments,
+    )
+    return ReviewRequestResponse.model_validate(res)
+
+
+@router.get("/{inspection_id}/review-requests", response_model=list[ReviewRequestResponse])
+def get_farmer_review_requests(
+    inspection_id: str,
+    user: AuthenticatedUser | None = Depends(get_optional_user),
+) -> list[ReviewRequestResponse]:
+    _require_inspection(inspection_id, user=user)
+    reqs = store.get_review_requests(inspection_id)
+    return [ReviewRequestResponse.model_validate(r) for r in reqs]
+

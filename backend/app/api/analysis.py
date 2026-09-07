@@ -55,6 +55,9 @@ def _complete_analysis(inspection: store.StoredInspection) -> None:
         "imagesResults": getattr(normalized, "images_results", None),
         "aiAssessment": ai_assessment,
         "officerAssessment": dict(ai_assessment),
+        "attentionQueue": getattr(normalized, "attention_queue", None),
+        "whyThisGrade": getattr(normalized, "why_this_grade", None),
+        "standardsMatrix": getattr(normalized, "standards_matrix", None),
     }
     store.save_analysis_result(inspection.id, result)
     store.update_inspection(

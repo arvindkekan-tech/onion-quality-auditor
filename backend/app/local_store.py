@@ -127,6 +127,33 @@ def init_db() -> None:
                 email TEXT NOT NULL,
                 expires_at TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS verified_feedback (
+                id TEXT PRIMARY KEY,
+                user_id TEXT,
+                inspection_id TEXT NOT NULL REFERENCES inspections(id) ON DELETE CASCADE,
+                onion_id TEXT NOT NULL,
+                ai_class TEXT NOT NULL,
+                ai_confidence REAL,
+                ai_size TEXT,
+                officer_class TEXT NOT NULL,
+                officer_size TEXT,
+                reason TEXT,
+                procurement_centre TEXT,
+                variety TEXT,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS review_requests (
+                id TEXT PRIMARY KEY,
+                inspection_id TEXT NOT NULL REFERENCES inspections(id) ON DELETE CASCADE,
+                farmer_name TEXT NOT NULL,
+                phone_number TEXT,
+                reason_category TEXT NOT NULL,
+                comments TEXT,
+                status TEXT NOT NULL DEFAULT 'PENDING',
+                created_at TEXT NOT NULL
+            );
             """
         )
         # Migrate existing inspections table for user_id
@@ -150,6 +177,9 @@ def init_db() -> None:
             ("images_results", "TEXT"),
             ("ai_assessment", "TEXT"),
             ("officer_assessment", "TEXT"),
+            ("attention_queue", "TEXT"),
+            ("why_this_grade", "TEXT"),
+            ("standards_matrix", "TEXT"),
         ]:
             try:
                 conn.execute(f"ALTER TABLE analysis_results ADD COLUMN {col_def[0]} {col_def[1]}")
@@ -249,6 +279,9 @@ def get_inspection(inspection_id: str, user_id: str | None = None) -> StoredInsp
                 "imagesResults": _safe_json_loads(res_row["images_results"]) if "images_results" in res_row.keys() else None,
                 "aiAssessment": _safe_json_loads(res_row["ai_assessment"]) if "ai_assessment" in res_row.keys() else None,
                 "officerAssessment": _safe_json_loads(res_row["officer_assessment"]) if "officer_assessment" in res_row.keys() else None,
+                "attentionQueue": _safe_json_loads(res_row["attention_queue"]) if "attention_queue" in res_row.keys() and res_row["attention_queue"] else None,
+                "whyThisGrade": _safe_json_loads(res_row["why_this_grade"]) if "why_this_grade" in res_row.keys() and res_row["why_this_grade"] else None,
+                "standardsMatrix": _safe_json_loads(res_row["standards_matrix"]) if "standards_matrix" in res_row.keys() and res_row["standards_matrix"] else None,
             }
 
         rev_row = conn.execute(
@@ -410,8 +443,9 @@ def save_analysis_result(inspection_id: str, result: dict[str, Any]) -> None:
                 rotten_damaged_count, sprouted_count, uncertain_count,
                 annotated_image_url, annotated_image_path, size_estimation, detections,
                 grade_explanation, attention_required, attention_reason,
-                images_results, ai_assessment, officer_assessment
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                images_results, ai_assessment, officer_assessment,
+                attention_queue, why_this_grade, standards_matrix
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(inspection_id) DO UPDATE SET
                 grade = excluded.grade,
                 confidence = excluded.confidence,
@@ -434,7 +468,10 @@ def save_analysis_result(inspection_id: str, result: dict[str, Any]) -> None:
                 attention_reason = excluded.attention_reason,
                 images_results = excluded.images_results,
                 ai_assessment = excluded.ai_assessment,
-                officer_assessment = excluded.officer_assessment
+                officer_assessment = excluded.officer_assessment,
+                attention_queue = excluded.attention_queue,
+                why_this_grade = excluded.why_this_grade,
+                standards_matrix = excluded.standards_matrix
             """,
             (
                 inspection_id,
@@ -460,6 +497,9 @@ def save_analysis_result(inspection_id: str, result: dict[str, Any]) -> None:
                 json.dumps(result["imagesResults"]) if result.get("imagesResults") else None,
                 json.dumps(result["aiAssessment"]) if result.get("aiAssessment") else None,
                 json.dumps(result["officerAssessment"]) if result.get("officerAssessment") else None,
+                json.dumps(result["attentionQueue"]) if result.get("attentionQueue") else None,
+                json.dumps(result["whyThisGrade"]) if result.get("whyThisGrade") else None,
+                json.dumps(result["standardsMatrix"]) if result.get("standardsMatrix") else None,
             ),
         )
 
@@ -653,6 +693,39 @@ def save_onion_decisions(inspection_id: str, decisions: list[dict[str, Any]]) ->
                     d.get("createdAt") or utc_now_iso(),
                 ),
             )
+            # When officer overrides AI decision, record as verified feedback
+            off_cls = d.get("officerClass")
+            ai_cls = d.get("aiClass")
+            if off_cls and ai_cls and off_cls != ai_cls:
+                fb_id = f"fb-{uuid4().hex[:8]}"
+                insp_row = conn.execute("SELECT location, variety, user_id FROM inspections WHERE id = ?", (inspection_id,)).fetchone()
+                loc = insp_row["location"] if insp_row else None
+                var = insp_row["variety"] if insp_row else None
+                u_id = insp_row["user_id"] if insp_row else None
+                conn.execute(
+                    """
+                    INSERT INTO verified_feedback (
+                        id, user_id, inspection_id, onion_id, ai_class,
+                        ai_confidence, ai_size, officer_class, officer_size,
+                        reason, procurement_centre, variety, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        fb_id,
+                        u_id,
+                        inspection_id,
+                        d.get("onionId", ""),
+                        ai_cls,
+                        float(d.get("aiConfidence", 0.0)) if d.get("aiConfidence") else None,
+                        d.get("aiSize"),
+                        off_cls,
+                        d.get("officerSize"),
+                        d.get("reason"),
+                        loc,
+                        var,
+                        d.get("createdAt") or utc_now_iso(),
+                    ),
+                )
 
 
 def get_onion_decisions(inspection_id: str) -> list[dict[str, Any]]:
@@ -679,6 +752,109 @@ def get_onion_decisions(inspection_id: str) -> list[dict[str, Any]]:
                 "createdAt": row["created_at"],
             }
             for row in cursor.fetchall()
+        ]
+
+
+def get_adaptive_recommendation(ai_class: str, confidence: float | None = None) -> dict[str, Any]:
+    init_db()
+    with _get_connection() as conn:
+        rows = conn.execute(
+            "SELECT officer_class, reason FROM verified_feedback WHERE ai_class = ?",
+            (ai_class,),
+        ).fetchall()
+        if not rows:
+            return {"hasAdaptiveInsight": False}
+        total_similar = len(rows)
+        counts: dict[str, int] = {}
+        reasons: list[str] = []
+        for r in rows:
+            cls = r["officer_class"]
+            counts[cls] = counts.get(cls, 0) + 1
+            if r["reason"] and r["reason"] not in reasons and len(reasons) < 3:
+                reasons.append(r["reason"])
+
+        top_corrected_class = max(counts.items(), key=lambda x: x[1])[0]
+        top_count = counts[top_corrected_class]
+
+        from_display = ai_class.replace("_", " ").title()
+        to_display = top_corrected_class.replace("_", " ").title()
+
+        return {
+            "hasAdaptiveInsight": True,
+            "similarCasesCount": total_similar,
+            "correctedCount": top_count,
+            "fromClass": ai_class,
+            "toClass": top_corrected_class,
+            "insightText": f"Based on {total_similar} previously verified similar case(s), {top_count} were corrected from {from_display} to {to_display}.",
+            "recommendation": f"Review carefully: historical officer consensus suggests checking for subtle {to_display.lower()} characteristics.",
+            "commonReasons": reasons,
+        }
+
+
+def save_review_request(
+    inspection_id: str,
+    farmer_name: str,
+    phone_number: str | None,
+    reason_category: str,
+    comments: str | None,
+) -> dict[str, Any]:
+    init_db()
+    from uuid import uuid4
+    from app.store import utc_now_iso
+    req_id = f"req-{uuid4().hex[:8]}"
+    now = utc_now_iso()
+    with _get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO review_requests (id, inspection_id, farmer_name, phone_number, reason_category, comments, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, 'PENDING', ?)
+            """,
+            (req_id, inspection_id, farmer_name, phone_number, reason_category, comments, now),
+        )
+        cert_row = conn.execute(
+            "SELECT audit_timeline FROM certificates WHERE inspection_id = ?",
+            (inspection_id,),
+        ).fetchone()
+        if cert_row and cert_row["audit_timeline"]:
+            timeline = _safe_json_loads(cert_row["audit_timeline"]) or []
+            timeline.append({
+                "time": now,
+                "event": f"Farmer Appeal Registered: {reason_category} ({farmer_name})",
+            })
+            conn.execute(
+                "UPDATE certificates SET audit_timeline = ? WHERE inspection_id = ?",
+                (json.dumps(timeline), inspection_id),
+            )
+    return {
+        "id": req_id,
+        "inspectionId": inspection_id,
+        "farmerName": farmer_name,
+        "reasonCategory": reason_category,
+        "status": "PENDING",
+        "createdAt": now,
+        "message": "Farmer review request logged in APMC Mandi audit trail.",
+    }
+
+
+def get_review_requests(inspection_id: str) -> list[dict[str, Any]]:
+    init_db()
+    with _get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM review_requests WHERE inspection_id = ? ORDER BY created_at DESC",
+            (inspection_id,),
+        ).fetchall()
+        return [
+            {
+                "id": r["id"],
+                "inspectionId": r["inspection_id"],
+                "farmerName": r["farmer_name"],
+                "phoneNumber": r["phone_number"],
+                "reasonCategory": r["reason_category"],
+                "comments": r["comments"],
+                "status": r["status"],
+                "createdAt": r["created_at"],
+            }
+            for r in rows
         ]
 
 

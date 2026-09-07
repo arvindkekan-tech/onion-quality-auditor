@@ -66,6 +66,9 @@ class InspectionResult(BaseModel):
     imagesResults: list[ImageAnalysisSummary] | None = None
     aiAssessment: dict[str, object] | None = None
     officerAssessment: dict[str, object] | None = None
+    attentionQueue: list[dict[str, object]] | None = None
+    whyThisGrade: dict[str, object] | None = None
+    standardsMatrix: list[dict[str, object]] | None = None
 
 
 class OnionDecisionInput(BaseModel):
@@ -132,3 +135,33 @@ class RecalculateResponse(BaseModel):
     grade: str
     gradeExplanation: str
     overrideCount: int
+    whyThisGrade: dict[str, object] | None = None
+    standardsMatrix: list[dict[str, object]] | None = None
+
+
+class ReviewRequestInput(BaseModel):
+    farmerName: str
+    phoneNumber: str | None = None
+    reasonCategory: str
+    comments: str | None = None
+
+
+class ReviewRequestResponse(BaseModel):
+    id: str
+    inspectionId: str
+    farmerName: str
+    reasonCategory: str
+    status: str
+    createdAt: str
+    message: str | None = None
+
+
+class AdaptiveInsight(BaseModel):
+    hasAdaptiveInsight: bool
+    similarCasesCount: int = 0
+    correctedCount: int = 0
+    fromClass: str | None = None
+    toClass: str | None = None
+    insightText: str | None = None
+    recommendation: str | None = None
+    commonReasons: list[str] | None = None

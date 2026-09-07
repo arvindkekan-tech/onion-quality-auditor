@@ -51,9 +51,31 @@ def verify_certificate(token: str) -> VerificationResult:
             valid=False,
             message="Certificate not found or has been revoked.",
         )
+    inspection_id = certificate.get("inspectionId")
+    inspection = store.get_inspection(inspection_id) if inspection_id else None
+    result_data = inspection.result if inspection else None
+
+    why_this_grade = (result_data.get("whyThisGrade") if result_data else None) or certificate.get("whyThisGrade")
+    standards_matrix = (result_data.get("standardsMatrix") if result_data else None) or certificate.get("standardsMatrix")
+
+    farmer_transparency = {
+        "lotId": certificate.get("batchLabel") or certificate.get("id"),
+        "inspectionDate": certificate.get("issuedAt"),
+        "procurementCentre": certificate.get("procurementCentre"),
+        "sampleSize": certificate.get("sampleSize"),
+        "finalGrade": certificate.get("officerGrade") or certificate.get("grade"),
+        "aiGrade": certificate.get("aiGrade"),
+        "overrideCount": certificate.get("overrideCount", 0),
+        "defectSummary": certificate.get("defectSummary"),
+        "verifiedStatus": "AUTHENTIC - APMC APPROVED",
+    }
+
     return VerificationResult(
         valid=True,
         message="Certificate is valid and has not been revoked.",
         certificate=Certificate.model_validate(certificate),
         auditTimeline=certificate.get("auditTimeline"),
+        whyThisGrade=why_this_grade,
+        standardsMatrix=standards_matrix,
+        farmerTransparency=farmer_transparency,
     )

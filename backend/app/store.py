@@ -573,4 +573,24 @@ def update_user_password(email: str, password_hash: str) -> bool:
     return local_store.update_user_password(email, password_hash)
 
 
+def get_adaptive_recommendation(ai_class: str, confidence: float | None = None) -> dict[str, Any]:
+    return local_store.get_adaptive_recommendation(ai_class, confidence)
+
+
+def save_review_request(
+    inspection_id: str,
+    farmer_name: str,
+    phone_number: str | None,
+    reason_category: str,
+    comments: str | None,
+) -> dict[str, Any]:
+    return local_store.save_review_request(
+        inspection_id, farmer_name, phone_number, reason_category, comments
+    )
+
+
+def get_review_requests(inspection_id: str) -> list[dict[str, Any]]:
+    return local_store.get_review_requests(inspection_id)
+
+
 save_review_approval = save_review_and_certificate

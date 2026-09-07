@@ -39,6 +39,9 @@ class NormalizedAnalysisResult:
     attention_required: bool = False
     attention_reason: str | None = None
     images_results: list[dict[str, Any]] | None = None
+    attention_queue: list[dict[str, Any]] | None = None
+    why_this_grade: dict[str, Any] | None = None
+    standards_matrix: list[dict[str, Any]] | None = None
 
 
 class AnalysisProvider(Protocol):
@@ -66,31 +69,44 @@ class DemoFallbackProvider:
             }
             for img in (inspection.images or [])
         ]
+        grade_res = calculate_commercial_grade(
+            total_onions=48,
+            healthy_count=46,
+            rotten_damaged_count=1,
+            sprouted_count=1,
+            uncertain_count=0,
+            average_confidence=0.91,
+            images_results=images_results,
+            average_diameter_mm=60.5,
+        )
         return NormalizedAnalysisResult(
-            grade="Grade A",
+            grade=grade_res.grade,
             confidence=0.91,
             classification="grade_a",
             total_onions=48,
             defects=[
-                {"label": "Sprouted", "count": 2, "category": "visual"},
-                {"label": "Mechanical Damage", "count": 3, "category": "visual"},
-                {"label": "Undersized", "count": 1, "category": "visual"},
-                {"label": "Surface Discoloration", "count": 4, "category": "visual"},
+                {"label": "Sprouted", "count": 1, "category": "visual"},
+                {"label": "Mechanical Damage", "count": 1, "category": "visual"},
+                {"label": "Undersized", "count": 0, "category": "visual"},
+                {"label": "Surface Discoloration", "count": 2, "category": "visual"},
                 {"label": "External Rot", "count": 0, "category": "visual"},
-                {"label": "Split / Cracked", "count": 1, "category": "visual"},
+                {"label": "Split / Cracked", "count": 0, "category": "visual"},
                 {"label": "Oversized", "count": 0, "category": "visual"},
             ],
             summary="Demo fallback analysis; replace with the trained ONIVIS model.",
             model_name="ONIVIS Demo Fallback",
             analyzed_at=utc_now_iso(),
-            healthy_count=42,
-            rotten_damaged_count=3,
-            sprouted_count=2,
-            uncertain_count=1,
-            grade_explanation="Grade A — defect ratio 10.4% (<= 15.0% demo tolerance)",
-            attention_required=False,
-            attention_reason=None,
+            healthy_count=46,
+            rotten_damaged_count=1,
+            sprouted_count=1,
+            uncertain_count=0,
+            grade_explanation=grade_res.explanation,
+            attention_required=grade_res.attention_required,
+            attention_reason=grade_res.attention_reason,
             images_results=images_results,
+            attention_queue=grade_res.attention_queue,
+            why_this_grade=grade_res.why_this_grade,
+            standards_matrix=grade_res.standards_matrix,
         )
 
 
@@ -275,6 +291,8 @@ class RealMLProvider:
         }
         dominant_class = self._dominant_class(overall_summary) if total_onions > 0 else "uncertain"
 
+        avg_diam = round(sum(all_diameters) / len(all_diameters), 2) if all_diameters else None
+
         grade_result = calculate_commercial_grade(
             total_onions=total_onions,
             healthy_count=total_healthy,
@@ -282,12 +300,15 @@ class RealMLProvider:
             sprouted_count=total_sprouted,
             uncertain_count=total_uncertain,
             average_confidence=average_confidence,
+            detections=all_detections,
+            images_results=images_results,
+            average_diameter_mm=avg_diam,
         )
 
         size_estimation = getattr(self, "_size_estimation", None)
         if size_estimation is None and all_diameters:
             size_estimation = {
-                "average_diameter_mm": round(sum(all_diameters) / len(all_diameters), 2),
+                "average_diameter_mm": avg_diam,
                 "minimum_diameter_mm": round(min(all_diameters), 2),
                 "maximum_diameter_mm": round(max(all_diameters), 2),
                 "sample_count": len(all_diameters),
@@ -335,6 +356,9 @@ class RealMLProvider:
             attention_required=grade_result.attention_required,
             attention_reason=grade_result.attention_reason,
             images_results=images_results,
+            attention_queue=grade_result.attention_queue,
+            why_this_grade=grade_result.why_this_grade,
+            standards_matrix=grade_result.standards_matrix,
         )
 
 
