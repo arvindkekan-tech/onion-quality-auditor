@@ -31,6 +31,13 @@ def upload_image(
     content_type: str,
 ) -> tuple[str, str]:
     path = f"{inspection_id}/{image_id}-{safe_filename(filename)}"
+    # Always persist locally first so local inference is instant and offline-capable
+    local_path = UPLOAD_DIR / path
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    local_path.write_bytes(content)
+    base = settings.public_base_url.rstrip("/")
+    public_url = f"{base}/uploads/{path}"
+
     if _is_supabase_configured():
         try:
             storage = get_supabase_client().storage.from_(settings.supabase_storage_bucket)
@@ -39,17 +46,11 @@ def upload_image(
                 content,
                 {"content-type": content_type, "upsert": "false"},
             )
-            public_url = storage.get_public_url(path)
-            return path, public_url
+            supa_url = storage.get_public_url(path)
+            return path, supa_url
         except Exception:
             pass
 
-    # Local fallback
-    local_path = UPLOAD_DIR / path
-    local_path.parent.mkdir(parents=True, exist_ok=True)
-    local_path.write_bytes(content)
-    base = settings.public_base_url.rstrip("/")
-    public_url = f"{base}/uploads/{path}"
     return path, public_url
 
 

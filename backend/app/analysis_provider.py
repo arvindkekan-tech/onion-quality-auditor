@@ -362,10 +362,23 @@ class RealMLProvider:
         )
 
 
+from functools import lru_cache
+
+
+@lru_cache(maxsize=1)
+def _get_real_ml_provider() -> RealMLProvider:
+    return RealMLProvider()
+
+
+@lru_cache(maxsize=1)
+def _get_demo_provider() -> DemoFallbackProvider:
+    return DemoFallbackProvider()
+
+
 def get_analysis_provider() -> AnalysisProvider:
     provider_name = (settings.analysis_provider or "demo").lower()
     if provider_name in {"real", "onivis_real", "yolo"}:
-        return RealMLProvider()
+        return _get_real_ml_provider()
     if provider_name == "demo":
-        return DemoFallbackProvider()
+        return _get_demo_provider()
     raise RuntimeError(f"Unsupported analysis provider: {settings.analysis_provider}")

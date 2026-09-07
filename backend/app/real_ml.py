@@ -8,7 +8,13 @@ from typing import Any, Dict, List, Tuple
 
 import cv2
 import numpy as np
+import torch
 from ultralytics import YOLO
+
+try:
+    torch.set_num_threads(1)
+except Exception:
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -128,12 +134,13 @@ class OnionInferenceEngine:
         return crop_x1, crop_y1, crop_x2, crop_y2
 
     def classify_crop(self, crop: np.ndarray) -> Tuple[str | None, float, Dict[str, float]]:
-        result = self.classifier.predict(
-            source=crop,
-            imgsz=self.CLASSIFICATION_IMG_SIZE,
-            device=self.device,
-            verbose=False,
-        )[0]
+        with torch.inference_mode():
+            result = self.classifier.predict(
+                source=crop,
+                imgsz=self.CLASSIFICATION_IMG_SIZE,
+                device=self.device,
+                verbose=False,
+            )[0]
 
         if result.probs is None:
             return None, 0.0, {}
@@ -211,25 +218,26 @@ class OnionInferenceEngine:
         return image
 
     def get_detections(self, image: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        result = self.detector.predict(
-            source=image,
-            imgsz=self.DETECTION_IMG_SIZE,
-            conf=self.detection_conf,
-            device=self.device,
-            verbose=False,
-        )[0]
+        with torch.inference_mode():
+            result = self.detector.predict(
+                source=image,
+                imgsz=self.DETECTION_IMG_SIZE,
+                conf=self.detection_conf,
+                device=self.device,
+                verbose=False,
+            )[0]
 
-        if result.obb is not None and len(result.obb) > 0:
-            boxes = result.obb.xyxy.detach().cpu().numpy()
-            confidences = result.obb.conf.detach().cpu().numpy()
-            return boxes, confidences
+            if result.obb is not None and len(result.obb) > 0:
+                boxes = result.obb.xyxy.detach().cpu().numpy()
+                confidences = result.obb.conf.detach().cpu().numpy()
+                return boxes, confidences
 
-        if result.boxes is not None and len(result.boxes) > 0:
-            boxes = result.boxes.xyxy.detach().cpu().numpy()
-            confidences = result.boxes.conf.detach().cpu().numpy()
-            return boxes, confidences
+            if result.boxes is not None and len(result.boxes) > 0:
+                boxes = result.boxes.xyxy.detach().cpu().numpy()
+                confidences = result.boxes.conf.detach().cpu().numpy()
+                return boxes, confidences
 
-        return np.empty((0, 4)), np.empty((0,))
+            return np.empty((0, 4)), np.empty((0,))
 
     def predict(self, image: np.ndarray) -> Dict[str, Any]:
         if image is None:
