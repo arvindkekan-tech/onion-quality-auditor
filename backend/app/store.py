@@ -250,7 +250,6 @@ def get_inspection(inspection_id: str, user_id: str | None = None) -> StoredInsp
                 if user_id is not None and row.get("user_id") and row.get("user_id") != user_id:
                     return None
                 return _inspection_from_row(row)
-            return None
         except Exception as exc:
             disable_supabase_and_fallback(f"get_inspection failed: {exc}")
 
@@ -544,7 +543,6 @@ def get_certificate_by_token(token: str) -> dict[str, Any] | None:
             row = _first(response)
             if row:
                 return _certificate_from_row(row)
-            return None
         except Exception as exc:
             disable_supabase_and_fallback(f"get_certificate_by_token failed: {exc}")
 
