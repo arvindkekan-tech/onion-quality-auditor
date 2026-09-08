@@ -21,4 +21,8 @@ export const authApi = {
   async resetPassword(data: ResetPasswordInput): Promise<{ success: boolean; message: string }> {
     return apiClient.post<{ success: boolean; message: string }>('/auth/reset-password', data)
   },
+
+  async updateProfile(data: { name: string }): Promise<AuthResponse['user']> {
+    return apiClient.patch<AuthResponse['user']>('/auth/me', data)
+  },
 }

@@ -1,4 +1,4 @@
-import { Download, ShieldCheck } from 'lucide-react'
+import { Download, Share2, ShieldCheck } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -161,20 +161,24 @@ export function QualityCertificatePage() {
                 ) : null}
               </div>
 
-              <div className="flex flex-col items-center rounded-xl border border-dashed border-border bg-surface-muted py-5 px-4 text-center">
+              {/* Public Verification Section */}
+              <div className="flex flex-col items-center rounded-xl border border-dashed border-border bg-surface-muted py-5 px-4 text-center space-y-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-primary">
+                  Verify this certificate
+                </span>
                 <QrCodeView
                   value={verifyUrl}
                   size={150}
                   alt={`QR Code for Certificate ${certificate.id}`}
                 />
-                <p className="mt-2.5 text-xs font-semibold text-foreground">
-                  Scan to verify authenticity
+                <p className="text-xs font-semibold text-foreground">
+                  Scan QR code
                 </p>
-                <p className="mt-0.5 max-w-xs break-all text-[10px] text-muted-foreground">
-                  {verifyUrl}
+                <p className="text-[11px] text-muted-foreground max-w-xs">
+                  Anyone with this certificate can verify its authenticity without an ONIVIS account.
                 </p>
-                <p className="mt-1 font-mono text-[10px] text-muted-foreground">
-                  Token: {certificate.qrToken}
+                <p className="font-mono text-[10px] text-muted-foreground">
+                  Verification Token: {certificate.qrToken}
                 </p>
               </div>
 
@@ -188,15 +192,37 @@ export function QualityCertificatePage() {
                 >
                   <PrimaryButton fullWidth className="gap-2 bg-emerald-700 hover:bg-emerald-800 text-white">
                     <Download className="size-4" aria-hidden />
-                    Download Official PDF Certificate
+                    Download PDF Certificate
                   </PrimaryButton>
                 </a>
-                <Link to={ROUTES.verify(certificate.qrToken)}>
-                  <SecondaryButton fullWidth>Verify Authenticity (Public QR)</SecondaryButton>
-                </Link>
+                <div className="grid grid-cols-2 gap-2">
+                  <SecondaryButton
+                    className="gap-2 text-xs"
+                    onClick={() => {
+                      if (navigator.share) {
+                        void navigator.share({
+                          title: `ONIVIS Certificate ${certificate.id}`,
+                          text: `Verify ONIVIS Digital Quality Record for lot ${certificate.batchId || certificate.id}`,
+                          url: verifyUrl,
+                        }).catch(() => {})
+                      } else {
+                        void navigator.clipboard.writeText(verifyUrl)
+                        alert('Certificate verification link copied to clipboard!')
+                      }
+                    }}
+                  >
+                    <Share2 className="size-3.5" />
+                    Share Record
+                  </SecondaryButton>
+                  <Link to={ROUTES.verify(certificate.qrToken)} className="block w-full">
+                    <SecondaryButton fullWidth className="text-xs">
+                      Public Verify Page
+                    </SecondaryButton>
+                  </Link>
+                </div>
                 <SecondaryButton
                   fullWidth
-                  className="gap-2"
+                  className="gap-2 text-xs"
                   onClick={() => window.print()}
                 >
                   Print / Save Screen View

@@ -2,19 +2,25 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import {
   checkImageQuality,
+  completeOfficerReAudit,
   createInspection,
   deleteInspection,
   getAdaptiveRecommendations,
   getInspectionHistory,
   getAnalysisStatus,
   getInspectionResults,
+  getOfficerReAuditDetail,
+  getOfficerReAuditRequests,
   recalculateInspection,
   startAnalysis,
   submitFarmerReviewRequest,
   submitReview,
+  trackReAuditRequest,
+  updateOfficerReAuditStatus,
   uploadImage,
 } from '@/lib/api/inspections'
 import type {
+  CompleteReAuditInput,
   CreateInspectionInput,
   OnionDecision,
   ReviewInput,
@@ -130,6 +136,79 @@ export function useSubmitFarmerReviewRequest(inspectionId: string) {
   return useMutation({
     mutationFn: (input: ReviewRequestInput) =>
       submitFarmerReviewRequest(inspectionId, input),
+  })
+}
+
+export const reAuditKeys = {
+  all: ['re-audits'] as const,
+  list: () => ['re-audits', 'list'] as const,
+  detail: (id: string) => ['re-audits', id] as const,
+}
+
+export function useOfficerReAuditRequests() {
+  return useQuery({
+    queryKey: reAuditKeys.list(),
+    queryFn: getOfficerReAuditRequests,
+  })
+}
+
+export function useOfficerReAuditDetail(id: string, enabled = true) {
+  return useQuery({
+    queryKey: reAuditKeys.detail(id),
+    queryFn: () => getOfficerReAuditDetail(id),
+    enabled: Boolean(id) && enabled,
+  })
+}
+
+export function useUpdateOfficerReAuditStatus() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      requestId,
+      status,
+      notes,
+    }: {
+      requestId: string
+      status: string
+      notes?: string
+    }) => updateOfficerReAuditStatus(requestId, status, notes),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: reAuditKeys.all })
+      queryClient.invalidateQueries({
+        queryKey: reAuditKeys.detail(variables.requestId),
+      })
+    },
+  })
+}
+
+export function useCompleteOfficerReAudit() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      requestId,
+      input,
+    }: {
+      requestId: string
+      input: CompleteReAuditInput
+    }) => completeOfficerReAudit(requestId, input),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: reAuditKeys.all })
+      queryClient.invalidateQueries({
+        queryKey: reAuditKeys.detail(variables.requestId),
+      })
+    },
+  })
+}
+
+export function useTrackReAuditRequest() {
+  return useMutation({
+    mutationFn: ({
+      requestId,
+      phoneNumber,
+    }: {
+      requestId: string
+      phoneNumber: string
+    }) => trackReAuditRequest(requestId, phoneNumber),
   })
 }
 

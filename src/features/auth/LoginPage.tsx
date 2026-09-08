@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { AlertCircle, Eye, EyeOff, Lock, Mail, ShieldCheck } from 'lucide-react'
+import { AlertCircle, Eye, EyeOff, Lock, Mail, QrCode, ShieldCheck } from 'lucide-react'
 
 import { PrimaryButton } from '@/components/shared/PrimaryButton'
 import { SecondaryButton } from '@/components/shared/SecondaryButton'
@@ -158,6 +158,16 @@ export function LoginPage() {
           <ShieldCheck className="mr-2 size-4 text-emerald-600" />
           1-Click Demo Inspector Login
         </SecondaryButton>
+
+        <div className="mt-3 text-center">
+          <Link
+            to="/verify"
+            className="inline-flex items-center text-xs font-medium text-slate-600 hover:text-emerald-700 hover:underline"
+          >
+            <QrCode className="mr-1.5 size-3.5 text-slate-500" />
+            Verify a certificate without signing in
+          </Link>
+        </div>
 
         <p className="mt-6 text-center text-xs text-slate-500">
           Need an authorized account?{' '}

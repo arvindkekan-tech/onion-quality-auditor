@@ -3,6 +3,7 @@ import { ClipboardList, Search, X } from 'lucide-react'
 
 import { EmptyState, InspectionCard, SectionHeader } from '@/components/shared'
 import { useDeleteInspection, useInspectionHistory } from '@/features/inspections/hooks'
+import { cn } from '@/lib/utils'
 import type { InspectionListItem } from '@/lib/demo-data'
 import type { InspectionHistoryItem } from '@/types/inspection'
 
@@ -43,10 +44,23 @@ export function InspectionsPage() {
   const historyQuery = useInspectionHistory()
   const deleteInspection = useDeleteInspection()
   const [searchTerm, setSearchTerm] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'pending' | 'rejected'>('all')
 
   const allItems = historyQuery.data ?? []
 
   const filteredItems = allItems.filter((item) => {
+    // Status filter
+    if (statusFilter === 'completed') {
+      const isCompleted = item.status === 'completed' || item.status === 'reviewed' || Boolean(item.certificateId)
+      if (!isCompleted || item.status === 'rejected') return false
+    } else if (statusFilter === 'pending') {
+      const isPending = !item.reviewSubmitted && item.status !== 'rejected' && !item.certificateId
+      if (!isPending) return false
+    } else if (statusFilter === 'rejected') {
+      if (item.status !== 'rejected') return false
+    }
+
+    // Search filter
     if (!searchTerm.trim()) return true
     const term = searchTerm.toLowerCase()
     return (
@@ -65,12 +79,16 @@ export function InspectionsPage() {
     deleteInspection.mutate(inspectionId)
   }
 
+  const completedCount = allItems.filter((i) => (i.status === 'completed' || i.status === 'reviewed' || Boolean(i.certificateId)) && i.status !== 'rejected').length
+  const pendingCount = allItems.filter((i) => !i.reviewSubmitted && i.status !== 'rejected' && !i.certificateId).length
+  const rejectedCount = allItems.filter((i) => i.status === 'rejected').length
+
   return (
     <main className="flex flex-1 flex-col gap-4 px-4 py-4 pt-5">
       <div>
         <h1 className="text-lg font-semibold">Inspections History</h1>
         <p className="text-xs text-muted-foreground">
-          All procurement centre audit records
+          All procurement centre audit records for your officer account
         </p>
       </div>
 
@@ -94,6 +112,30 @@ export function InspectionsPage() {
             <X className="size-4" />
           </button>
         ) : null}
+      </div>
+
+      {/* Filter Tabs */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+        {[
+          { key: 'all', label: `All (${allItems.length})` },
+          { key: 'completed', label: `Completed (${completedCount})` },
+          { key: 'pending', label: `Pending (${pendingCount})` },
+          { key: 'rejected', label: `Rejected (${rejectedCount})` },
+        ].map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            onClick={() => setStatusFilter(tab.key as typeof statusFilter)}
+            className={cn(
+              'shrink-0 rounded-lg px-3 py-1.5 font-medium transition-colors',
+              statusFilter === tab.key
+                ? 'bg-primary text-primary-foreground shadow-2xs font-semibold'
+                : 'border border-border bg-surface-muted text-muted-foreground hover:bg-muted',
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       <SectionHeader

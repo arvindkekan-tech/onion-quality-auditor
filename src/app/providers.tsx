@@ -3,7 +3,7 @@ import { RouterProvider } from 'react-router-dom'
 
 import { router } from '@/app/router'
 
-const queryClient = new QueryClient({
+export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 1,

@@ -14,6 +14,7 @@ import { QualityCertificatePage } from '@/features/quality-certificate'
 import { QrVerificationPage } from '@/features/qr-verification'
 import { ProfilePage } from '@/features/profile'
 import { LandingPage } from '@/features/landing'
+import { ReAuditRequestsPage, ReAuditTrackingPage } from '@/features/re-audits'
 import {
   LoginPage,
   SignUpPage,
@@ -24,13 +25,16 @@ import {
 import { ROUTES } from '@/lib/constants'
 
 export const router = createBrowserRouter([
-  // Public Routes (Landing, Auth, QR Verification)
+  // Public Routes (Landing, Auth, QR Verification, Re-audit Tracking)
   { path: ROUTES.welcome, element: <LandingPage /> },
   { path: ROUTES.login, element: <LoginPage /> },
   { path: ROUTES.signup, element: <SignUpPage /> },
   { path: ROUTES.forgotPassword, element: <ForgotPasswordPage /> },
   { path: ROUTES.resetPassword, element: <ResetPasswordPage /> },
+  { path: '/verify', element: <QrVerificationPage /> },
   { path: '/verify/:token', element: <QrVerificationPage /> },
+  { path: ROUTES.reAuditTrack, element: <ReAuditTrackingPage /> },
+  { path: '/re-audit/track', element: <ReAuditTrackingPage /> },
 
   // Public Inspection Flow (Accessible via Quick Start / Start New Inspection without login)
   {
@@ -52,6 +56,8 @@ export const router = createBrowserRouter([
         element: <AppShell />,
         children: [
           { path: ROUTES.dashboard, element: <DashboardPage /> },
+          { path: '/dashboard', element: <DashboardPage /> },
+          { path: ROUTES.reAudits, element: <ReAuditRequestsPage /> },
           { path: ROUTES.inspections, element: <InspectionsPage /> },
           { path: ROUTES.analytics, element: <AnalyticsPage /> },
           { path: ROUTES.profile, element: <ProfilePage /> },

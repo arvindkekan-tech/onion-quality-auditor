@@ -16,6 +16,8 @@ export const ROUTES = {
   humanReview: (id: string) => `/inspection/${id}/review`,
   certificate: (id: string) => `/certificate/${id}`,
   verify: (token: string) => `/verify/${token}`,
+  reAudits: '/re-audits',
+  reAuditTrack: '/re-audit/track',
 } as const
 
 export const INSPECTION_STEPS = [

@@ -10,6 +10,10 @@ export function AnalyticsPage() {
   const completed = inspections.filter(
     (item) => item.analysisStatus === 'completed' || item.status === 'completed' || item.status === 'reviewed',
   )
+  const approvedCount = inspections.filter(
+    (item) => item.status === 'reviewed' || Boolean(item.certificateId) || (item.grade && !item.grade.toLowerCase().includes('reject') && item.status === 'completed'),
+  ).length
+  const certificatesCount = inspections.filter((item) => Boolean(item.certificateId)).length
   const gradeACount = inspections.filter((item) => item.grade?.toLowerCase() === 'grade a').length
   const rejectedCount = inspections.filter(
     (item) => item.status === 'rejected' || item.grade?.toLowerCase().includes('reject'),
@@ -55,7 +59,7 @@ export function AnalyticsPage() {
         <div>
           <h1 className="text-lg font-semibold">Quality Analytics</h1>
           <p className="text-xs text-muted-foreground">
-            Procurement quality overview across active centres
+            Officer-scoped quality trends and procurement centre distribution
           </p>
         </div>
 
@@ -64,14 +68,15 @@ export function AnalyticsPage() {
         ) : inspections.length === 0 ? (
           <EmptyState
             icon={BarChart3}
-            title="No data available"
-            description="Complete inspections to view quality metrics and centre breakdowns."
+            title="Not enough inspection data yet."
+            description="Perform your first sample inspection to view quality trends and defect analytics."
           />
         ) : (
           <>
+            {/* Overview KPI Cards */}
             <div className="grid grid-cols-2 gap-3">
               <MetricCard
-                label="Total Audits"
+                label="Total Inspections"
                 value={inspections.length}
               />
               <MetricCard
@@ -79,17 +84,20 @@ export function AnalyticsPage() {
                 value={completed.length}
               />
               <MetricCard
-                label="Onions Inspected"
-                value={totalOnionsAudited}
+                label="Approved"
+                value={approvedCount}
               />
               <MetricCard
-                label="Grade A Batches"
-                value={gradeACount}
+                label="Certificates Issued"
+                value={certificatesCount}
               />
               <MetricCard
                 label="Rejected Batches"
                 value={rejectedCount}
-                className="col-span-2"
+              />
+              <MetricCard
+                label="Bulbs Audited"
+                value={totalOnionsAudited}
               />
             </div>
 

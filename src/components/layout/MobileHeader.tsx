@@ -23,12 +23,19 @@ export function MobileHeader({
     >
       {showBranding ? (
         <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-lg font-bold tracking-tight text-primary">{APP_NAME}</p>
-            <p className="text-xs font-medium text-foreground">{APP_TAGLINE}</p>
-            <p className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-              {APP_INSTITUTION}
-            </p>
+          <div className="flex items-center gap-2.5">
+            <img
+              src="/onivis-icon.png"
+              alt="ONIVIS"
+              className="size-8 object-contain shrink-0"
+            />
+            <div>
+              <p className="text-lg font-bold tracking-tight text-primary leading-tight">{APP_NAME}</p>
+              <p className="text-xs font-medium text-foreground">{APP_TAGLINE}</p>
+              <p className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                {APP_INSTITUTION}
+              </p>
+            </div>
           </div>
           {showConnectivity ? (
             <div className="flex items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-1">

@@ -1,7 +1,10 @@
 import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
+  AlertTriangle,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Edit3,
   RotateCcw,
   ShieldCheck,
@@ -17,7 +20,6 @@ import {
   PrimaryButton,
   SecondaryButton,
   StatusBadge,
-  WhyThisGradeCard,
 } from '@/components/shared'
 import {
   useAdaptiveRecommendations,
@@ -53,6 +55,14 @@ const REASON_PRESETS = [
   'Other inspector observation',
 ]
 
+const REJECTION_PRESETS = [
+  'Excessive visible defects',
+  'Poor image/sample quality',
+  'Insufficient evidence',
+  'Inspection failed review',
+  'Other',
+]
+
 export function HumanReviewPage() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
@@ -69,6 +79,12 @@ export function HumanReviewPage() {
   const [overrideGrade, setOverrideGrade] = useState<string>('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+
+  // Rejection modal state
+  const [isRejectModalOpen, setIsRejectModalOpen] = useState(false)
+  const [rejectionPreset, setRejectionPreset] = useState(REJECTION_PRESETS[0])
+  const [rejectionCustomReason, setRejectionCustomReason] = useState('')
+  const [isDecisionEvidenceOpen, setIsDecisionEvidenceOpen] = useState(false)
 
   // Onion override state
   const [onionDecisions, setOnionDecisions] = useState<Record<string, OnionDecision>>({})
@@ -228,32 +244,41 @@ export function HumanReviewPage() {
     }
   }
 
-  async function handleReview(approved: boolean) {
+  async function handleReview(approved: boolean, customNotes?: string) {
     setIsSubmitting(true)
     setErrorMessage(null)
     try {
+      const finalNotes =
+        customNotes ||
+        notes.trim() ||
+        (approved
+          ? `Inspector approved batch quality as ${effectiveOfficerGrade}`
+          : 'Inspector rejected batch during quality review')
+
       const response = await submitReview.mutateAsync({
         approved,
-        notes:
-          notes.trim() ||
-          (approved
-            ? `Inspector approved batch quality as ${effectiveOfficerGrade}`
-            : 'Inspector rejected batch during quality review'),
-        overrideGrade: effectiveOfficerGrade || undefined,
+        notes: finalNotes,
+        overrideGrade: approved ? (effectiveOfficerGrade || undefined) : 'Rejected',
         onionDecisions: Object.values(onionDecisions),
       })
 
       if (approved && response.certificateId) {
         navigate(ROUTES.certificate(response.certificateId))
       } else {
-        navigate(ROUTES.inspectionResults(id))
+        navigate(ROUTES.inspections)
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to submit review'
       setErrorMessage(msg)
     } finally {
       setIsSubmitting(false)
+      setIsRejectModalOpen(false)
     }
+  }
+
+  function handleConfirmReject() {
+    const reason = rejectionCustomReason.trim() || rejectionPreset
+    void handleReview(false, `Rejected: ${reason}`)
   }
 
   const attentionQueueOnionIds = useMemo(() => {
@@ -300,13 +325,6 @@ export function HumanReviewPage() {
   }, [detections, onionDecisions, filterTab, attentionQueueOnionIds])
 
 
-  const aiGradeBadgeStatus =
-    (results?.grade || '').toLowerCase().includes('grade a')
-      ? 'grade_a'
-      : (results?.grade || '').toLowerCase().includes('urs')
-        ? 'urs'
-        : 'rejected'
-
   const officerGradeBadgeStatus =
     effectiveOfficerGrade.toLowerCase().includes('grade a')
       ? 'grade_a'
@@ -333,112 +351,100 @@ export function HumanReviewPage() {
 
           {results ? (
             <>
-              {/* Dual Quality Assessment Card */}
+              {/* Final Inspection Review Top Summary */}
               <div className="space-y-3 rounded-xl border border-border bg-card p-4 shadow-soft">
-                <div className="flex items-center justify-between border-b border-border/80 pb-3">
+                <div className="flex items-center justify-between border-b border-border/80 pb-2.5">
                   <div>
                     <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                      Dual Quality Assessment
+                      Final Inspection Review
                     </span>
                     <h3 className="text-sm font-bold text-foreground">
-                      AI Recommendation vs Officer Final Assessment
+                      Officer Decision & Exception Handling
                     </h3>
                   </div>
-                  {overrideCount > 0 ? (
-                    <span className="rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
-                      {overrideCount} Override{overrideCount > 1 ? 's' : ''} Active
-                    </span>
-                  ) : (
-                    <span className="rounded-full border border-border bg-surface-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                      AI Baseline
-                    </span>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  {/* AI Track */}
-                  <div className="rounded-xl border border-border bg-surface-muted p-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-semibold text-muted-foreground">
-                        AI Initial
+                  <div className="flex items-center gap-2">
+                    {overrideCount > 0 ? (
+                      <span className="rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
+                        {overrideCount} Override{overrideCount > 1 ? 's' : ''}
                       </span>
-                      <StatusBadge status={aiGradeBadgeStatus} label={results.grade} />
-                    </div>
-                    <p className="mt-1.5 text-xl font-extrabold text-foreground">
-                      {results.grade}
-                    </p>
-                    <div className="mt-2 space-y-1 border-t border-border/60 pt-2 text-xs text-muted-foreground">
-                      <div className="flex justify-between">
-                        <span>Defect Rate:</span>
-                        <span className="font-semibold text-foreground">
-                          {aiDefectRate}%
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Healthy:</span>
-                        <span>{results.healthyCount ?? 0}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Defects:</span>
-                        <span>
-                          {(results.rottenDamagedCount ?? 0) +
-                            (results.sproutedCount ?? 0)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Officer Final Track */}
-                  <div className="rounded-xl border-2 border-primary/40 bg-card p-3 shadow-soft">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-primary">
-                        Officer Final
-                      </span>
-                      <StatusBadge
-                        status={officerGradeBadgeStatus}
-                        label={effectiveOfficerGrade}
-                      />
-                    </div>
-                    <p className="mt-1.5 text-xl font-extrabold text-foreground">
-                      {effectiveOfficerGrade}
-                    </p>
-                    <div className="mt-2 space-y-1 border-t border-border/60 pt-2 text-xs text-muted-foreground">
-                      <div className="flex justify-between">
-                        <span>Defect Rate:</span>
-                        <span className="font-bold text-foreground">
-                          {effectiveDefectPercentage}%
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Healthy:</span>
-                        <span>{effectiveHealthy}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Defects:</span>
-                        <span>{effectiveDefects}</span>
-                      </div>
-                    </div>
+                    ) : null}
+                    <StatusBadge status={officerGradeBadgeStatus} label={effectiveOfficerGrade} />
                   </div>
                 </div>
 
-                {backendRecalc?.gradeExplanation || backendRecalc?.explanation ? (
-                  <p className="rounded-lg border border-border bg-surface-muted p-2.5 text-xs text-muted-foreground">
-                    {backendRecalc.gradeExplanation || backendRecalc.explanation}
-                  </p>
-                ) : results.gradeExplanation ? (
-                  <p className="rounded-lg border border-border bg-surface-muted p-2.5 text-xs text-muted-foreground">
-                    {results.gradeExplanation}
-                  </p>
-                ) : null}
+                {/* Compact Summary: Grade, Sample Count, % Healthy, Defect Ratio */}
+                <div className="grid grid-cols-4 gap-2 text-center text-xs">
+                  <div className="rounded-lg bg-surface-muted p-2">
+                    <p className="text-[10px] text-muted-foreground">Grade</p>
+                    <p className="text-sm font-extrabold text-foreground">{effectiveOfficerGrade}</p>
+                  </div>
+                  <div className="rounded-lg bg-surface-muted p-2">
+                    <p className="text-[10px] text-muted-foreground">Sample</p>
+                    <p className="text-sm font-bold text-foreground">{detections.length || results.totalOnions || 0} bulbs</p>
+                  </div>
+                  <div className="rounded-lg bg-surface-muted p-2">
+                    <p className="text-[10px] text-muted-foreground">Healthy</p>
+                    <p className="text-sm font-bold text-success">
+                      {(detections.length || results.totalOnions || 0) > 0
+                        ? (((effectiveHealthy) / (detections.length || results.totalOnions || 1)) * 100).toFixed(1)
+                        : 0}%
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-surface-muted p-2">
+                    <p className="text-[10px] text-muted-foreground">Defect Ratio</p>
+                    <p className={cn(
+                      'text-sm font-bold',
+                      effectiveDefectPercentage <= 5.0 ? 'text-success' : effectiveDefectPercentage <= 15.0 ? 'text-warning' : 'text-destructive',
+                    )}>
+                      {effectiveDefectPercentage}%
+                    </p>
+                  </div>
+                </div>
+
+                {/* Expandable Decision Evidence Drawer */}
+                <div className="rounded-xl border border-border bg-surface-muted overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setIsDecisionEvidenceOpen(!isDecisionEvidenceOpen)}
+                    className="flex w-full items-center justify-between p-3 text-xs font-semibold hover:bg-muted transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="size-3.5 text-primary" />
+                      <span>Decision Evidence & Breakdown</span>
+                    </div>
+                    {isDecisionEvidenceOpen ? <ChevronUp className="size-4 text-muted-foreground" /> : <ChevronDown className="size-4 text-muted-foreground" />}
+                  </button>
+                  {isDecisionEvidenceOpen ? (
+                    <div className="border-t border-border/80 p-3 space-y-2 text-xs">
+                      <div className="flex justify-between border-b border-border/60 pb-1">
+                        <span className="text-muted-foreground">Healthy Bulbs:</span>
+                        <span className="font-semibold text-success">{effectiveHealthy}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-border/60 pb-1">
+                        <span className="text-muted-foreground">Defective Bulbs:</span>
+                        <span className="font-semibold text-destructive">{effectiveDefects}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-border/60 pb-1">
+                        <span className="text-muted-foreground">Rotten / Damaged:</span>
+                        <span>{backendRecalc?.rottenDamagedCount ?? liveMetrics.rottenDamaged}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-border/60 pb-1">
+                        <span className="text-muted-foreground">Sprouted:</span>
+                        <span>{backendRecalc?.sproutedCount ?? liveMetrics.sprouted}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-border/60 pb-1">
+                        <span className="text-muted-foreground">AI Initial Finding:</span>
+                        <span className="font-medium">{results.grade} (Defect rate: {aiDefectRate}%)</span>
+                      </div>
+                      {backendRecalc?.gradeExplanation || results.gradeExplanation ? (
+                        <p className="text-[11px] text-muted-foreground pt-1">
+                          {backendRecalc?.gradeExplanation || results.gradeExplanation}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
               </div>
-
-              {/* Dynamic Evidence-Based Explainability Card */}
-              {backendRecalc?.whyThisGrade || results.whyThisGrade ? (
-                <WhyThisGradeCard
-                  data={backendRecalc?.whyThisGrade || results.whyThisGrade}
-                  compact
-                />
-              ) : null}
 
               {/* Annotated Image Visualization */}
               {imageSrc ? (
@@ -634,11 +640,12 @@ export function HumanReviewPage() {
                 <label className="block text-xs font-medium text-foreground">
                   Official Grade Adjustment (Optional Override)
                 </label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-4 gap-2">
                   {[
                     { value: '', label: `Computed (${effectiveOfficerGrade})` },
                     { value: 'Grade A', label: 'Grade A' },
                     { value: 'URS', label: 'URS' },
+                    { value: 'Rejected', label: 'Reject' },
                   ].map((opt) => (
                     <button
                       key={opt.value}
@@ -647,7 +654,7 @@ export function HumanReviewPage() {
                       className={cn(
                         'min-h-10 rounded-lg border text-xs font-medium transition-colors',
                         overrideGrade === opt.value
-                          ? 'border-primary bg-primary/10 text-primary'
+                          ? 'border-primary bg-primary/10 text-primary font-bold'
                           : 'border-border bg-surface-muted text-muted-foreground hover:bg-muted',
                       )}
                     >
@@ -697,7 +704,7 @@ export function HumanReviewPage() {
                 <SecondaryButton
                   fullWidth
                   disabled={isSubmitting}
-                  onClick={() => handleReview(false)}
+                  onClick={() => setIsRejectModalOpen(true)}
                   className="gap-2 border-destructive/30 text-destructive hover:bg-destructive/10"
                 >
                   <XCircle className="size-4" />
@@ -905,6 +912,91 @@ export function HumanReviewPage() {
         </div>
         )
       })() : null}
+
+      {/* Reject Batch Confirmation Modal */}
+      {isRejectModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-destructive/30 bg-card p-5 shadow-2xl space-y-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div className="flex items-center gap-2 text-destructive font-bold text-sm">
+                <AlertTriangle className="size-5" />
+                <span>Reject this batch?</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsRejectModalOpen(false)}
+                className="rounded-full p-1 text-muted-foreground hover:bg-surface-muted hover:text-foreground"
+                aria-label="Close dialog"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Please provide the official reason for rejection. This rejection will be permanently recorded in the audit history and no certificate will be issued.
+            </p>
+
+            {/* Presets */}
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-semibold text-foreground uppercase tracking-wider">
+                Select Reason Category
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {REJECTION_PRESETS.map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => {
+                      setRejectionPreset(preset)
+                      if (preset !== 'Other') setRejectionCustomReason('')
+                    }}
+                    className={cn(
+                      'rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors',
+                      rejectionPreset === preset
+                        ? 'border-destructive bg-destructive/10 text-destructive font-bold'
+                        : 'border-border bg-surface-muted text-muted-foreground hover:bg-muted',
+                    )}
+                  >
+                    {preset}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Details / Custom Textarea */}
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-semibold text-foreground uppercase tracking-wider">
+                Detailed Rejection Remarks (Required)
+              </label>
+              <textarea
+                rows={3}
+                value={rejectionCustomReason || (rejectionPreset !== 'Other' ? rejectionPreset : '')}
+                onChange={(e) => setRejectionCustomReason(e.target.value)}
+                placeholder="Specify rejection details, defect observations, or return notes…"
+                className="w-full rounded-lg border border-border bg-surface-muted p-2.5 text-xs text-foreground placeholder:text-muted-foreground focus:border-destructive focus:outline-none focus:ring-1 focus:ring-destructive"
+              />
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-2 pt-2 border-t border-border">
+              <SecondaryButton
+                className="flex-1 text-xs"
+                onClick={() => setIsRejectModalOpen(false)}
+              >
+                Cancel
+              </SecondaryButton>
+              <button
+                type="button"
+                disabled={isSubmitting || !(rejectionCustomReason.trim() || rejectionPreset)}
+                onClick={handleConfirmReject}
+                className="flex-1 min-h-11 inline-flex items-center justify-center rounded-xl bg-destructive px-4 text-xs font-semibold text-destructive-foreground hover:bg-destructive/90 transition-colors disabled:opacity-50"
+              >
+                {isSubmitting ? 'Recording Rejection…' : 'Confirm Rejection'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
 
   )

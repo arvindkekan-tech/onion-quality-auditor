@@ -6,6 +6,7 @@ import * as mock from '@/lib/api/mock/inspections.mock'
 import type {
   AdaptiveInsight,
   AnalysisStatusResponse,
+  CompleteReAuditInput,
   CreateInspectionInput,
   ImageQualityResult,
   Inspection,
@@ -13,6 +14,8 @@ import type {
   InspectionImage,
   InspectionResult,
   OnionDecision,
+  ReAuditRequestDetail,
+  ReAuditTrackingResponse,
   RecalculateResponse,
   ReviewInput,
   ReviewRequestInput,
@@ -26,6 +29,8 @@ import {
   inspectionHistoryItemSchema,
   inspectionResultSchema,
   inspectionSchema,
+  reAuditRequestDetailSchema,
+  reAuditTrackingResponseSchema,
   recalculateResponseSchema,
   reviewRequestResponseSchema,
   reviewResponseSchema,
@@ -145,5 +150,49 @@ export async function submitFarmerReviewRequest(
     `/inspections/${inspectionId}/request-review`,
     input,
     reviewRequestResponseSchema,
+  )
+}
+
+export async function getOfficerReAuditRequests(): Promise<ReAuditRequestDetail[]> {
+  return apiClient.get('/re-audit-requests', z.array(reAuditRequestDetailSchema))
+}
+
+export async function getOfficerReAuditDetail(
+  requestId: string,
+): Promise<ReAuditRequestDetail> {
+  return apiClient.get(`/re-audit-requests/${requestId}`, reAuditRequestDetailSchema)
+}
+
+export async function updateOfficerReAuditStatus(
+  requestId: string,
+  status: string,
+  notes?: string,
+): Promise<ReAuditRequestDetail> {
+  return apiClient.patch(
+    `/re-audit-requests/${requestId}`,
+    { status, notes },
+    reAuditRequestDetailSchema,
+  )
+}
+
+export async function completeOfficerReAudit(
+  requestId: string,
+  input: CompleteReAuditInput,
+): Promise<ReAuditRequestDetail> {
+  return apiClient.post(
+    `/re-audit-requests/${requestId}/complete`,
+    input,
+    reAuditRequestDetailSchema,
+  )
+}
+
+export async function trackReAuditRequest(
+  requestId: string,
+  phoneNumber: string,
+): Promise<ReAuditTrackingResponse> {
+  return apiClient.post(
+    '/re-audit-requests/track',
+    { requestId, phoneNumber },
+    reAuditTrackingResponseSchema,
   )
 }

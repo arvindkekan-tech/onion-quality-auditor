@@ -127,9 +127,11 @@ export const adaptiveInsightSchema = z.object({
 export type AdaptiveInsight = z.infer<typeof adaptiveInsightSchema>
 
 export const reviewRequestInputSchema = z.object({
-  farmerName: z.string().min(1),
-  phoneNumber: z.string().nullable().optional(),
-  reasonCategory: z.string().min(1),
+  farmerName: z.string().min(1, 'Farmer name is required'),
+  phoneNumber: z
+    .string()
+    .min(10, 'Valid 10-digit phone number is required to track your request'),
+  reasonCategory: z.string().min(1, 'Dispute reason is required'),
   comments: z.string().nullable().optional(),
 })
 
@@ -138,7 +140,9 @@ export type ReviewRequestInput = z.infer<typeof reviewRequestInputSchema>
 export const reviewRequestResponseSchema = z.object({
   id: z.string(),
   inspectionId: z.string(),
+  certificateId: z.string().nullable().optional(),
   farmerName: z.string(),
+  phoneNumber: z.string().optional(),
   reasonCategory: z.string(),
   status: z.string(),
   createdAt: z.string(),
@@ -146,6 +150,76 @@ export const reviewRequestResponseSchema = z.object({
 })
 
 export type ReviewRequestResponse = z.infer<typeof reviewRequestResponseSchema>
+
+export const reAuditRequestDetailSchema = z.object({
+  id: z.string(),
+  inspectionId: z.string(),
+  certificateId: z.string().nullable().optional(),
+  farmerName: z.string(),
+  phoneNumber: z.string().nullable().optional(),
+  reasonCategory: z.string(),
+  comments: z.string().nullable().optional(),
+  status: z.string().default('PENDING'),
+  createdAt: z.string(),
+  inReviewAt: z.string().nullable().optional(),
+  completedAt: z.string().nullable().optional(),
+  completedBy: z.string().nullable().optional(),
+  finding: z.string().nullable().optional(),
+  explanation: z.string().nullable().optional(),
+  evidenceReviewed: z.array(z.string()).nullable().optional(),
+  reAuditGrade: z.string().nullable().optional(),
+  originalGrade: z.string().nullable().optional(),
+  inspectionDate: z.string().nullable().optional(),
+  variety: z.string().nullable().optional(),
+  location: z.string().nullable().optional(),
+  sampleSize: z.number().nullable().optional(),
+  defectSummary: z.string().nullable().optional(),
+  inspectorName: z.string().nullable().optional(),
+  procurementCentre: z.string().nullable().optional(),
+})
+
+export type ReAuditRequestDetail = z.infer<typeof reAuditRequestDetailSchema>
+
+export const completeReAuditInputSchema = z.object({
+  finding: z.string().min(1, 'Finding is required'),
+  explanation: z.string().min(1, 'Explanation is required'),
+  evidenceReviewed: z
+    .array(z.string())
+    .min(1, 'At least one evidence item is required'),
+  reAuditGrade: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
+})
+
+export type CompleteReAuditInput = z.infer<typeof completeReAuditInputSchema>
+
+export const reAuditTrackingResponseSchema = z.object({
+  id: z.string(),
+  certificateId: z.string().nullable().optional(),
+  inspectionId: z.string(),
+  farmerName: z.string(),
+  phoneNumber: z.string(),
+  reasonCategory: z.string(),
+  comments: z.string().nullable().optional(),
+  status: z.string(),
+  createdAt: z.string(),
+  inReviewAt: z.string().nullable().optional(),
+  completedAt: z.string().nullable().optional(),
+  originalGrade: z.string().nullable().optional(),
+  originalInspectionDate: z.string().nullable().optional(),
+  procurementCentre: z.string().nullable().optional(),
+  variety: z.string().nullable().optional(),
+  sampleSize: z.number().nullable().optional(),
+  evidenceReviewed: z.array(z.string()).nullable().optional(),
+  finding: z.string().nullable().optional(),
+  explanation: z.string().nullable().optional(),
+  reAuditGrade: z.string().nullable().optional(),
+  officerName: z.string().nullable().optional(),
+  completedBy: z.string().nullable().optional(),
+})
+
+export type ReAuditTrackingResponse = z.infer<
+  typeof reAuditTrackingResponseSchema
+>
 
 export const inspectionResultSchema = z.object({
   inspectionId: z.string(),

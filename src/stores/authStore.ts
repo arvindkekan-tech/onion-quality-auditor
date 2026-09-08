@@ -5,6 +5,8 @@ export type UserProfile = {
   email: string
   name: string
   role: string
+  centre?: string
+  phone?: string
 }
 
 type AuthState = {
@@ -15,6 +17,7 @@ type AuthState = {
   login: (token: string, user: UserProfile) => void
   logout: () => void
   initAuth: () => void
+  updateProfile: (updated: Partial<UserProfile>) => void
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -38,7 +41,25 @@ export const useAuthStore = create<AuthState>((set) => ({
     } catch {
       // Ignore
     }
+    try {
+      // Also clear active inspection draft
+      sessionStorage.removeItem('inspection_draft')
+    } catch {
+      // Ignore
+    }
     set({ user: null, token: null, isAuthenticated: false, isLoading: false })
+  },
+  updateProfile: (updated: Partial<UserProfile>) => {
+    set((state) => {
+      if (!state.user) return state
+      const newUser = { ...state.user, ...updated }
+      try {
+        localStorage.setItem('onivis_user', JSON.stringify(newUser))
+      } catch {
+        // Ignore
+      }
+      return { user: newUser }
+    })
   },
   initAuth: () => {
     try {
