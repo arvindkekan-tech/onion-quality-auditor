@@ -31,13 +31,17 @@ export function AiAnalysisPage() {
     }
   }, [isResuming, startAnalysis])
 
-  const status = analysisStatus.data
-  const isComplete = status?.status === 'completed'
-  const progress = status?.progress ?? 5
+  const status = analysisStatus.data ?? startAnalysis.data
+  const isComplete =
+    status?.status === 'completed' ||
+    (status?.progress ?? 0) >= 100
+  const progress = isComplete
+    ? 100
+    : (status?.progress ?? (startAnalysis.isPending ? 45 : 10))
 
   useEffect(() => {
     if (isComplete) {
-      const timer = setTimeout(() => setShowComplete(true), 500)
+      const timer = setTimeout(() => setShowComplete(true), 400)
       return () => clearTimeout(timer)
     }
   }, [isComplete])
@@ -133,7 +137,7 @@ export function AiAnalysisPage() {
             </PrimaryButton>
           ) : null}
 
-          {!isComplete && analysisStatus.isError ? (
+          {!isComplete && (analysisStatus.isError || startAnalysis.isError) ? (
             <p className="text-sm text-destructive" role="alert">
               Analysis status unavailable. Tap refresh to retry.
             </p>
@@ -142,7 +146,12 @@ export function AiAnalysisPage() {
           {!isComplete ? (
             <button
               type="button"
-              onClick={() => analysisStatus.refetch()}
+              onClick={() => {
+                analysisStatus.refetch()
+                if (!hasStarted.current || startAnalysis.isError) {
+                  startAnalysis.mutate()
+                }
+              }}
               className="text-xs text-primary underline-offset-2 hover:underline"
             >
               Refresh status

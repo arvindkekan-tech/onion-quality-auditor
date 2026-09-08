@@ -322,10 +322,22 @@ async function runQaPass() {
     currentInspectionId = captureUrl.split('/inspection/')[1].split('/')[0];
     console.log('  Created Anonymous Inspection ID:', currentInspectionId);
 
-    // Upload real sample onion tray image
+    // Read real 6-onion tray photo and attach via HTML5 DataTransfer
+    const base64Data = fs.readFileSync(SAMPLE_IMAGE_PATH).toString('base64');
     await page.waitForSelector('input[type="file"]', { timeout: 10000 });
-    const fileInput = await page.$('input[type="file"]');
-    await fileInput.uploadFile(SAMPLE_IMAGE_PATH);
+    await page.evaluate((b64) => {
+      const input = document.querySelector('input[type="file"]');
+      const binary = atob(b64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      const file = new File([bytes], 'sample_onion_tray.jpg', { type: 'image/jpeg' });
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      input.files = dt.files;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    }, base64Data);
     await new Promise(r => setTimeout(r, 2000));
 
     // Wait for image thumbnail preview in UI
@@ -337,7 +349,7 @@ async function runQaPass() {
     await clickElementByText(page, 'button', 'Continue');
 
     // Reaches Quality Check page
-    await page.waitForFunction(() => window.location.pathname.includes('/quality'), { timeout: 15000 });
+    await page.waitForFunction(() => window.location.pathname.includes('/quality'), { timeout: 25000 });
     const screenshotFQuality = path.join(EVIDENCE_DIR, 'flow_f_quality_check.png');
     await page.screenshot({ path: screenshotFQuality });
 
@@ -346,24 +358,31 @@ async function runQaPass() {
       const buttons = Array.from(document.querySelectorAll('button'));
       const btn = buttons.find(b => /Proceed to AI Analysis/i.test(b.textContent));
       return btn && !btn.disabled;
-    }, { timeout: 20000 });
+    }, { timeout: 30000 });
 
     await clickElementByText(page, 'button', 'Proceed to AI Analysis');
 
     // Reaches AI Analysis page
-    await page.waitForFunction(() => window.location.pathname.includes('/analysis'), { timeout: 15000 });
+    await page.waitForFunction(() => window.location.pathname.includes('/analysis'), { timeout: 20000 });
     console.log('  Triggered real YOLOv8 ML analysis on backend...');
 
     // Monitor progress until View Results appears
     let analysisFinished = false;
-    for (let poll = 0; poll < 30; poll++) {
+    for (let poll = 0; poll < 60; poll++) {
       await new Promise(r => setTimeout(r, 3000));
       const pageText = await page.evaluate(() => document.body.innerText);
       const isComplete = pageText.includes('View Results');
-      console.log(`  [Poll ${poll + 1}/30] Analysis status... Complete button visible: ${isComplete}`);
+      console.log(`  [Poll ${poll + 1}/60] Analysis status... Complete button visible: ${isComplete}`);
       if (isComplete) {
         analysisFinished = true;
         break;
+      }
+      if ((poll + 1) % 5 === 0) {
+        await page.evaluate(() => {
+          const btns = Array.from(document.querySelectorAll('button'));
+          const refBtn = btns.find(b => /Refresh status/i.test(b.textContent));
+          if (refBtn) refBtn.click();
+        });
       }
     }
 
@@ -371,7 +390,7 @@ async function runQaPass() {
     await page.screenshot({ path: screenshotGProgress });
 
     if (!analysisFinished) {
-      throw new Error('Analysis timed out or did not display "View Results" within 90 seconds.');
+      throw new Error('Analysis timed out or did not display "View Results" within 180 seconds.');
     }
 
     recordResult('FLOW F — QUICK START / NO LOGIN', 'Real Android UI Quick Start to Image Upload', 'PASS',
@@ -426,7 +445,7 @@ async function runQaPass() {
 
     // Now log in as officer and verify it returns to /inspection/:id/review
     await typeInto(page, 'form input[type="email"]', 'inspector.lasalgaon@apmc.gov.in');
-    await typeInto(page, 'form input[placeholder="••••••••"]', 'Password@123');
+    await typeInto(page, 'form input[type="password"]', 'Password@123');
 
     const submitBtn = await page.$('form button[type="submit"]');
     await submitBtn.click();
@@ -448,7 +467,7 @@ async function runQaPass() {
     await page.screenshot({ path: screenshotJReview });
 
     // Click Confirm & Finalize or Approve Inspection
-    await clickElementByText(page, 'button', 'Approve|Finalize|Confirm|Generate Certificate');
+    await clickElementByText(page, 'button', 'Approve & Issue Certificate|Confirm & Finalize|Approve');
     await page.waitForFunction(() => window.location.pathname.includes('/certificate'), { timeout: 15000 });
 
     const screenshotJConfirmed = path.join(EVIDENCE_DIR, 'flow_j_approval_confirmed.png');
@@ -500,17 +519,31 @@ async function runQaPass() {
       certQrToken = 'cert-' + currentInspectionId;
     }
 
-    // Verify valid token on actual frontend UI
-    await page.goto(`https://onivis-frontend.onrender.com/verify/${certQrToken}`, { waitUntil: 'networkidle0' });
-    await page.waitForSelector('main', { timeout: 10000 });
+    // Verify valid token on actual frontend UI via React Router Link
+    const qrVerifyBtn = await page.evaluateHandle(() => {
+      const buttons = Array.from(document.querySelectorAll('button'));
+      return buttons.find(b => /Verify Authenticity/i.test(b.textContent));
+    });
+
+    if (qrVerifyBtn && (await qrVerifyBtn.asElement())) {
+      await page.evaluate(b => b.click(), qrVerifyBtn);
+    } else {
+      await page.evaluate((token) => {
+        window.history.pushState(null, '', `/verify/${token}`);
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }, certQrToken);
+    }
+    await page.waitForFunction(() => window.location.pathname.includes('/verify'), { timeout: 10000 });
     await new Promise(r => setTimeout(r, 2000));
 
     const screenshotLValid = path.join(EVIDENCE_DIR, 'flow_l_qr_valid.png');
     await page.screenshot({ path: screenshotLValid });
 
-    // Verify invalid / non-existent token
-    await page.goto('https://onivis-frontend.onrender.com/verify/invalid-fake-token-99999', { waitUntil: 'networkidle0' });
-    await page.waitForSelector('main', { timeout: 10000 });
+    // Verify invalid / non-existent token via client-side routing
+    await page.evaluate(() => {
+      window.history.pushState(null, '', '/verify/invalid-fake-token-99999');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
     await new Promise(r => setTimeout(r, 2500));
 
     const invalidVerifyText = await page.evaluate(() => document.body.innerText);

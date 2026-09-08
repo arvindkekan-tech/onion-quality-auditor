@@ -71,7 +71,10 @@ export function useStartAnalysis(inspectionId: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: () => startAnalysis(inspectionId),
-    onSuccess: () => {
+    onSuccess: (data) => {
+      if (data) {
+        queryClient.setQueryData(inspectionKeys.analysis(inspectionId), data)
+      }
       queryClient.invalidateQueries({
         queryKey: inspectionKeys.analysis(inspectionId),
       })
@@ -84,13 +87,13 @@ export function useAnalysisStatus(inspectionId: string, enabled = true) {
     queryKey: inspectionKeys.analysis(inspectionId),
     queryFn: () => getAnalysisStatus(inspectionId),
     enabled: Boolean(inspectionId) && enabled,
-    retry: 15,
-    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 5000),
+    retry: 5,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 4000),
     refetchInterval: (query) =>
       query.state.data?.status === 'completed' ||
       query.state.data?.status === 'failed'
         ? false
-        : 2500,
+        : 3500,
   })
 }
 
