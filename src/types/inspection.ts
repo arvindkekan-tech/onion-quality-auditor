@@ -254,6 +254,7 @@ export const inspectionResultSchema = z.object({
   attentionQueue: z.array(attentionQueueItemSchema).nullable().optional(),
   whyThisGrade: whyThisGradeSchema.nullable().optional(),
   standardsMatrix: z.array(standardsMatrixItemSchema).nullable().optional(),
+  qualityComposition: z.record(z.string(), z.any()).nullable().optional(),
 })
 
 export type InspectionResult = z.infer<typeof inspectionResultSchema>

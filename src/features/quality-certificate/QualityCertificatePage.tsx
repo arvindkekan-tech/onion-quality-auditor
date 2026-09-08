@@ -4,6 +4,7 @@ import { Link, useParams } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { PrimaryButton, QrCodeView, SecondaryButton, StatusBadge } from '@/components/shared'
 import { useCertificate } from '@/features/certificates/hooks'
+import { useInspectionResults } from '@/features/inspections/hooks'
 import { getCertificatePdfUrl } from '@/lib/api/certificates'
 import { APP_NAME } from '@/lib/demo-data'
 import { ROUTES } from '@/lib/constants'
@@ -12,6 +13,11 @@ export function QualityCertificatePage() {
   const { id = '' } = useParams()
   const certificateQuery = useCertificate(id)
   const certificate = certificateQuery.data
+  const resultsQuery = useInspectionResults(
+    certificate?.inspectionId ?? '',
+    Boolean(certificate?.inspectionId),
+  )
+  const results = resultsQuery.data
 
   const verifyUrl = certificate
     ? `${window.location.origin}${ROUTES.verify(certificate.qrToken)}`
@@ -23,6 +29,78 @@ export function QualityCertificatePage() {
       : certificate?.grade.toLowerCase().includes('urs')
         ? 'urs'
         : 'rejected'
+
+  // Quality Composition (SIH PS Compliance)
+  const comp = certificate?.qualityComposition
+  const dual = certificate?.dualAssessment
+  const track = (dual?.officer || dual?.ai) as
+    | {
+        healthyCount?: number
+        rottenDamagedCount?: number
+        sproutedCount?: number
+        totalOnions?: number
+      }
+    | undefined
+
+  const totalBulbs =
+    comp?.totalOnions ??
+    certificate?.sampleSize ??
+    track?.totalOnions ??
+    results?.totalOnions ??
+    0
+
+  const healthyCount =
+    track?.healthyCount ?? results?.healthyCount ?? undefined
+
+  const rottenDamagedCount =
+    comp?.rottenDamagedCount ??
+    track?.rottenDamagedCount ??
+    results?.rottenDamagedCount ??
+    undefined
+
+  const sproutedCount =
+    comp?.sproutedCount ??
+    track?.sproutedCount ??
+    results?.sproutedCount ??
+    undefined
+
+  const undersizedItem = results?.defects?.find((d) =>
+    d.label.toLowerCase().includes('undersized')
+  )
+  const undersizedCount =
+    comp?.undersizedCount ??
+    (undersizedItem ? undersizedItem.count : undefined)
+
+  const gradeAPct =
+    comp?.gradeAPercent !== undefined && comp?.gradeAPercent !== null
+      ? `${comp.gradeAPercent}%`
+      : totalBulbs > 0 && healthyCount !== undefined
+        ? `${((healthyCount / totalBulbs) * 100).toFixed(1)}%`
+        : 'Not available'
+
+  const ursPct =
+    comp?.ursPercent !== undefined && comp?.ursPercent !== null
+      ? `${comp.ursPercent}%`
+      : totalBulbs > 0 &&
+          rottenDamagedCount !== undefined &&
+          sproutedCount !== undefined
+        ? `${(((rottenDamagedCount + sproutedCount) / totalBulbs) * 100).toFixed(1)}%`
+        : 'Not available'
+
+  const undersizedDisplay =
+    undersizedCount !== null && undersizedCount !== undefined
+      ? String(undersizedCount)
+      : 'Not available'
+
+  const rottenDamagedDisplay =
+    rottenDamagedCount !== null && rottenDamagedCount !== undefined
+      ? String(rottenDamagedCount)
+      : 'Not available'
+
+  const sproutedDisplay =
+    sproutedCount !== null && sproutedCount !== undefined
+      ? String(sproutedCount)
+      : 'Not available'
 
   return (
     <>
@@ -109,6 +187,60 @@ export function QualityCertificatePage() {
                   <p className="mt-1 text-sm">{certificate.defectSummary}</p>
                 </div>
               ) : null}
+
+              {/* Quality Composition (SIH PS Compliance) */}
+              <div className="space-y-2.5 rounded-xl border border-border bg-surface-muted p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-foreground">
+                    Quality Composition
+                  </span>
+                  <span className="rounded-full border border-primary/20 bg-primary/5 px-2 py-0.5 text-[10px] font-medium text-primary">
+                    SIH PS Breakdown
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
+                  <div className="rounded-lg border border-border bg-card p-2">
+                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                      Grade A
+                    </span>
+                    <p className="text-sm font-extrabold text-emerald-700 mt-0.5">
+                      {gradeAPct}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border bg-card p-2">
+                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                      URS
+                    </span>
+                    <p className="text-sm font-extrabold text-amber-700 mt-0.5">
+                      {ursPct}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border bg-card p-2">
+                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                      Undersized
+                    </span>
+                    <p className="text-sm font-bold text-foreground mt-0.5">
+                      {undersizedDisplay}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border bg-card p-2">
+                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                      Rotten / Damaged
+                    </span>
+                    <p className="text-sm font-bold text-rose-700 mt-0.5">
+                      {rottenDamagedDisplay}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border bg-card p-2 col-span-2 sm:col-span-1">
+                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                      Sprouted
+                    </span>
+                    <p className="text-sm font-bold text-amber-600 mt-0.5">
+                      {sproutedDisplay}
+                    </p>
+                  </div>
+                </div>
+              </div>
 
               {/* Dual Assessment Track */}
               <div className="space-y-2 rounded-xl border border-border bg-surface-muted p-3">

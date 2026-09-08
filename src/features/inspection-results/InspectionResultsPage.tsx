@@ -67,6 +67,39 @@ export function InspectionResultsPage() {
   const defectCount = rottenDamagedCount + sproutedCount
   const defectRatio = totalBulbs > 0 ? (defectCount / totalBulbs) * 100 : 0
 
+  // Quality Composition (SIH Problem Statement Compliance)
+  const undersizedDefect = results?.defects?.find((d) =>
+    d.label.toLowerCase().includes('undersized')
+  )
+  const undersizedCount =
+    results?.qualityComposition?.undersizedCount !== undefined
+      ? results.qualityComposition.undersizedCount
+      : undersizedDefect
+        ? undersizedDefect.count
+        : null
+
+  const gradeAPct =
+    results?.qualityComposition?.gradeAPercent !== undefined
+      ? `${results.qualityComposition.gradeAPercent}%`
+      : totalBulbs > 0
+        ? `${((healthyCount / totalBulbs) * 100).toFixed(1)}%`
+        : 'Not available'
+
+  const ursPct =
+    results?.qualityComposition?.ursPercent !== undefined
+      ? `${results.qualityComposition.ursPercent}%`
+      : totalBulbs > 0
+        ? `${((defectCount / totalBulbs) * 100).toFixed(1)}%`
+        : 'Not available'
+
+  const undersizedDisplay =
+    undersizedCount !== null && undersizedCount !== undefined
+      ? String(undersizedCount)
+      : 'Not available'
+
+  const rottenDamagedDisplay = String(rottenDamagedCount)
+  const sproutedDisplay = String(sproutedCount)
+
   const sizeEstimation = results?.sizeEstimation as
     | {
         average_diameter_mm?: number
@@ -153,6 +186,77 @@ export function InspectionResultsPage() {
                   <StatusBadge status={gradeStatus} label={gradeName} />
                 </div>
               </div>
+
+              {/* Quality Composition / Breakdown (SIH PS Compliance) */}
+              <section className="space-y-2 rounded-xl border border-border bg-card p-4 shadow-soft">
+                <div className="flex items-center justify-between border-b border-border pb-2">
+                  <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    <Layers className="size-3.5 text-primary" />
+                    <span>Quality Composition</span>
+                  </div>
+                  <span className="rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200/60 px-2 py-0.5 text-[10px] font-semibold">
+                    PS Grade &amp; Defect Breakdown
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1 text-center">
+                  <div className="rounded-lg bg-surface-muted p-2.5 border border-border/50">
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                      Grade A
+                    </p>
+                    <p className="text-base font-extrabold text-emerald-700 mt-0.5">
+                      {gradeAPct}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {healthyCount} sound bulb{healthyCount === 1 ? '' : 's'}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-surface-muted p-2.5 border border-border/50">
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                      URS
+                    </p>
+                    <p className="text-base font-extrabold text-amber-700 mt-0.5">
+                      {ursPct}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {defectCount} re-sort bulb{defectCount === 1 ? '' : 's'}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-surface-muted p-2.5 border border-border/50">
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                      Undersized
+                    </p>
+                    <p className="text-base font-bold text-foreground mt-0.5">
+                      {undersizedDisplay}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      &lt; 40mm caliber
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-surface-muted p-2.5 border border-border/50">
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                      Rotten / Damaged
+                    </p>
+                    <p className="text-base font-bold text-rose-700 mt-0.5">
+                      {rottenDamagedDisplay}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      Physical decay
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-surface-muted p-2.5 border border-border/50 col-span-2 sm:col-span-1">
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                      Sprouted
+                    </p>
+                    <p className="text-base font-bold text-amber-600 mt-0.5">
+                      {sproutedDisplay}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      Vegetative shoots
+                    </p>
+                  </div>
+                </div>
+              </section>
 
               {/* Expandable "Why This Grade?" Decision Evidence Card */}
               {results.whyThisGrade ? (
