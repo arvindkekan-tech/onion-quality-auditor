@@ -212,6 +212,14 @@ def create_inspection(
     created_at: str,
     user_id: str | None = None,
 ) -> StoredInspection:
+    local_insp = local_store.create_inspection(
+        id=id,
+        variety=variety,
+        weight_kg=weight_kg,
+        location=location,
+        created_at=created_at,
+        user_id=user_id,
+    )
     if _is_supabase_active():
         try:
             row = {
@@ -232,28 +240,29 @@ def create_inspection(
         except Exception as exc:
             disable_supabase_and_fallback(f"create_inspection failed: {exc}")
 
-    return local_store.create_inspection(
-        id=id,
-        variety=variety,
-        weight_kg=weight_kg,
-        location=location,
-        created_at=created_at,
-        user_id=user_id,
-    )
+    return local_insp
 
 
 def get_inspection(inspection_id: str, user_id: str | None = None) -> StoredInspection | None:
+    insp = None
     if _is_supabase_active():
         try:
             row = _get_inspection_row(inspection_id)
             if row:
                 if user_id is not None and row.get("user_id") and row.get("user_id") != user_id:
                     return None
-                return _inspection_from_row(row)
+                insp = _inspection_from_row(row)
         except Exception as exc:
             disable_supabase_and_fallback(f"get_inspection failed: {exc}")
 
-    return local_store.get_inspection(inspection_id, user_id=user_id)
+    local_insp = local_store.get_inspection(inspection_id, user_id=user_id)
+    if insp is None:
+        return local_insp
+    if insp.result is None and local_insp and local_insp.result is not None:
+        return local_insp
+    if insp.analysis_status in ("pending", "processing") and local_insp and local_insp.analysis_status == "completed":
+        return local_insp
+    return insp
 
 
 def list_inspections(user_id: str | None = None) -> list[StoredInspection]:
@@ -301,6 +310,15 @@ def create_image(
     storage_path: str,
     url: str,
 ) -> StoredImage:
+    local_img = local_store.create_image(
+        id=id,
+        inspection_id=inspection_id,
+        uploaded_at=uploaded_at,
+        filename=filename,
+        content_type=content_type,
+        storage_path=storage_path,
+        url=url,
+    )
     if _is_supabase_active():
         try:
             response = _execute(
@@ -333,18 +351,11 @@ def create_image(
         except Exception as exc:
             disable_supabase_and_fallback(f"create_image failed: {exc}")
 
-    return local_store.create_image(
-        id=id,
-        inspection_id=inspection_id,
-        uploaded_at=uploaded_at,
-        filename=filename,
-        content_type=content_type,
-        storage_path=storage_path,
-        url=url,
-    )
+    return local_img
 
 
 def update_inspection(inspection_id: str, values: dict[str, Any]) -> None:
+    local_store.update_inspection(inspection_id, values)
     if _is_supabase_active():
         try:
             _execute(_client().table("inspections").update(values).eq("id", inspection_id))
@@ -352,10 +363,9 @@ def update_inspection(inspection_id: str, values: dict[str, Any]) -> None:
         except Exception as exc:
             disable_supabase_and_fallback(f"update_inspection failed: {exc}")
 
-    local_store.update_inspection(inspection_id, values)
-
 
 def delete_inspection(inspection_id: str, user_id: str | None = None) -> None:
+    local_store.delete_inspection(inspection_id, user_id=user_id)
     if _is_supabase_active():
         try:
             query = _client().table("inspections").delete().eq("id", inspection_id)
@@ -366,10 +376,9 @@ def delete_inspection(inspection_id: str, user_id: str | None = None) -> None:
         except Exception as exc:
             disable_supabase_and_fallback(f"delete_inspection failed: {exc}")
 
-    local_store.delete_inspection(inspection_id, user_id=user_id)
-
 
 def save_analysis_result(inspection_id: str, result: dict[str, Any]) -> None:
+    local_store.save_analysis_result(inspection_id, result)
     if _is_supabase_active():
         try:
             row = {
@@ -402,8 +411,6 @@ def save_analysis_result(inspection_id: str, result: dict[str, Any]) -> None:
         except Exception as exc:
             disable_supabase_and_fallback(f"save_analysis_result failed: {exc}")
 
-    local_store.save_analysis_result(inspection_id, result)
-
 
 def _certificate_from_row(row: dict[str, Any]) -> dict[str, Any]:
     return {
@@ -433,6 +440,7 @@ def save_review_and_certificate(
     review: dict[str, Any],
     certificate: dict[str, Any],
 ) -> None:
+    local_store.save_review_and_certificate(inspection_id, review, certificate)
     if _is_supabase_active():
         try:
             certificate_row = {
@@ -475,13 +483,12 @@ def save_review_and_certificate(
         except Exception as exc:
             disable_supabase_and_fallback(f"save_review_and_certificate failed: {exc}")
 
-    local_store.save_review_and_certificate(inspection_id, review, certificate)
-
 
 def save_review_rejection(
     inspection_id: str,
     review: dict[str, Any],
 ) -> None:
+    local_store.save_review_rejection(inspection_id, review)
     if _is_supabase_active():
         try:
             try:
@@ -507,8 +514,6 @@ def save_review_rejection(
         except Exception as exc:
             disable_supabase_and_fallback(f"save_review_rejection failed: {exc}")
 
-    local_store.save_review_rejection(inspection_id, review)
-
 
 def get_certificate(certificate_id: str) -> dict[str, Any] | None:
     if _is_supabase_active():
@@ -523,7 +528,6 @@ def get_certificate(certificate_id: str) -> dict[str, Any] | None:
             row = _first(response)
             if row:
                 return _certificate_from_row(row)
-            return None
         except Exception as exc:
             disable_supabase_and_fallback(f"get_certificate failed: {exc}")
 

@@ -41,12 +41,18 @@ def upload_image(
     if _is_supabase_configured():
         try:
             storage = get_supabase_client().storage.from_(settings.supabase_storage_bucket)
-            storage.upload(
-                path,
-                content,
-                {"content-type": content_type, "upsert": "false"},
-            )
             supa_url = storage.get_public_url(path)
+            import threading
+            def _bg_upload():
+                try:
+                    storage.upload(
+                        path,
+                        content,
+                        {"content-type": content_type, "upsert": "true"},
+                    )
+                except Exception:
+                    pass
+            threading.Thread(target=_bg_upload, daemon=True).start()
             return path, supa_url
         except Exception:
             pass

@@ -13,6 +13,7 @@ from ultralytics import YOLO
 
 try:
     torch.set_num_threads(1)
+    torch.set_num_interop_threads(1)
 except Exception:
     pass
 
@@ -358,8 +359,9 @@ class OnionInferenceEngine:
             )
 
         success, encoded_image = cv2.imencode(".jpg", display_image, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
-        if not success:
-            raise RuntimeError("Failed to encode annotated image.")
+        del display_image, original_image, crop_items, crops_list, batch_results
+        import gc
+        gc.collect()
 
         return {
             "total_onions": len(detections),

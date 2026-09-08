@@ -211,7 +211,7 @@ def create_inspection(
     with _get_connection() as conn:
         conn.execute(
             """
-            INSERT INTO inspections (id, variety, weight_kg, location, created_at, status, analysis_status, analysis_poll_count, user_id)
+            INSERT OR REPLACE INTO inspections (id, variety, weight_kg, location, created_at, status, analysis_status, analysis_poll_count, user_id)
             VALUES (?, ?, ?, ?, ?, 'draft', NULL, 0, ?)
             """,
             (id, variety, weight_kg, location, created_at, user_id),
