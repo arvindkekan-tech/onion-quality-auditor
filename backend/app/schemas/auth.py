@@ -48,3 +48,7 @@ class ResetPasswordRequest(BaseModel):
 class ResetPasswordResponse(BaseModel):
     success: bool
     message: str
+
+
+class UserUpdate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)

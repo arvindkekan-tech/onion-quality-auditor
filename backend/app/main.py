@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from app.api.analysis import router as analysis_router
 from app.api.auth import router as auth_router
 from app.api.certificates import router as certificates_router
+from app.api.re_audits import router as re_audits_router
 from app.api.health import router as health_router
 from app.api.inspections import router as inspections_router
 from app.core.config import settings
@@ -29,11 +30,13 @@ app.include_router(auth_router, prefix="/api/v1")
 app.include_router(inspections_router, prefix="/api/v1")
 app.include_router(analysis_router, prefix="/api/v1")
 app.include_router(certificates_router, prefix="/api/v1")
+app.include_router(re_audits_router, prefix="/api/v1")
 # Frontend default VITE_API_BASE_URL is http://localhost:8000 (no /api/v1).
 app.include_router(auth_router)
 app.include_router(inspections_router)
 app.include_router(analysis_router)
 app.include_router(certificates_router)
+app.include_router(re_audits_router)
 
 
 from app.api.health import get_system_health

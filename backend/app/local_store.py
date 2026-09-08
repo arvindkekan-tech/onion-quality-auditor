@@ -186,6 +186,22 @@ def init_db() -> None:
             except Exception:
                 pass
 
+        # Migrate review_requests table for closed-loop response
+        for col_def in [
+            ("in_review_at", "TEXT"),
+            ("completed_at", "TEXT"),
+            ("completed_by", "TEXT"),
+            ("finding", "TEXT"),
+            ("explanation", "TEXT"),
+            ("evidence_reviewed", "TEXT"),
+            ("re_audit_grade", "TEXT"),
+            ("officer_notes", "TEXT"),
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE review_requests ADD COLUMN {col_def[0]} {col_def[1]}")
+            except Exception:
+                pass
+
 
 def _safe_json_loads(val: Any) -> Any:
     if val is None:
@@ -340,7 +356,7 @@ def list_inspections(user_id: str | None = None) -> list[StoredInspection]:
     with _get_connection() as conn:
         if user_id is not None:
             rows = conn.execute(
-                "SELECT id FROM inspections WHERE user_id = ? OR user_id IS NULL ORDER BY created_at DESC",
+                "SELECT id FROM inspections WHERE user_id = ? ORDER BY created_at DESC",
                 (user_id,),
             ).fetchall()
         else:
@@ -632,9 +648,12 @@ def get_certificate(certificate_id: str) -> dict[str, Any] | None:
 
 def get_certificate_by_token(token: str) -> dict[str, Any] | None:
     init_db()
+    clean_token = token.strip()
+    qr_variant = clean_token if clean_token.startswith("qr-") else f"qr-{clean_token}"
     with _get_connection() as conn:
         row = conn.execute(
-            "SELECT * FROM certificates WHERE qr_token = ?", (token,)
+            "SELECT * FROM certificates WHERE qr_token = ? OR id = ? OR qr_token = ?",
+            (clean_token, clean_token, qr_variant),
         ).fetchone()
         if not row:
             return None
@@ -794,16 +813,24 @@ def get_adaptive_recommendation(ai_class: str, confidence: float | None = None) 
 def save_review_request(
     inspection_id: str,
     farmer_name: str,
-    phone_number: str | None,
+    phone_number: str,
     reason_category: str,
     comments: str | None,
 ) -> dict[str, Any]:
     init_db()
-    from uuid import uuid4
     from app.store import utc_now_iso
-    req_id = f"req-{uuid4().hex[:8]}"
+    import datetime
     now = utc_now_iso()
     with _get_connection() as conn:
+        # Generate persistent, unique human-readable Request ID e.g. RA-2026-000001
+        year = datetime.datetime.now(datetime.timezone.utc).year
+        row_cnt = conn.execute("SELECT COUNT(*) as cnt FROM review_requests").fetchone()
+        count = (row_cnt["cnt"] if row_cnt else 0) + 1
+        req_id = f"RA-{year}-{count:06d}"
+        while conn.execute("SELECT 1 FROM review_requests WHERE id = ?", (req_id,)).fetchone():
+            count += 1
+            req_id = f"RA-{year}-{count:06d}"
+
         conn.execute(
             """
             INSERT INTO review_requests (id, inspection_id, farmer_name, phone_number, reason_category, comments, status, created_at)
@@ -812,7 +839,7 @@ def save_review_request(
             (req_id, inspection_id, farmer_name, phone_number, reason_category, comments, now),
         )
         cert_row = conn.execute(
-            "SELECT audit_timeline FROM certificates WHERE inspection_id = ?",
+            "SELECT id, audit_timeline FROM certificates WHERE inspection_id = ?",
             (inspection_id,),
         ).fetchone()
         if cert_row and cert_row["audit_timeline"]:
@@ -825,9 +852,11 @@ def save_review_request(
                 "UPDATE certificates SET audit_timeline = ? WHERE inspection_id = ?",
                 (json.dumps(timeline), inspection_id),
             )
+    cert_id = cert_row["id"] if cert_row else None
     return {
         "id": req_id,
         "inspectionId": inspection_id,
+        "certificateId": cert_id,
         "farmerName": farmer_name,
         "reasonCategory": reason_category,
         "status": "PENDING",
@@ -942,3 +971,354 @@ def update_user_password(email: str, password_hash: str) -> bool:
 
 
 save_review_approval = save_review_and_certificate
+
+
+def update_user_profile(user_id: str, name: str) -> dict[str, Any] | None:
+    init_db()
+    with _get_connection() as conn:
+        conn.execute("UPDATE users SET name = ? WHERE id = ?", (name.strip(), user_id))
+        row = conn.execute("SELECT id, email, name, role, created_at FROM users WHERE id = ?", (user_id,)).fetchone()
+        if not row:
+            return None
+        return {
+            "id": row["id"],
+            "email": row["email"],
+            "name": row["name"],
+            "role": row["role"],
+            "createdAt": row["created_at"],
+        }
+
+
+def list_officer_re_audit_requests(user_id: str) -> list[dict[str, Any]]:
+    init_db()
+    with _get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                rr.id,
+                rr.inspection_id,
+                rr.farmer_name,
+                rr.phone_number,
+                rr.reason_category,
+                rr.comments,
+                rr.status,
+                rr.created_at,
+                rr.in_review_at,
+                rr.completed_at,
+                rr.completed_by,
+                rr.finding,
+                rr.explanation,
+                rr.evidence_reviewed,
+                rr.re_audit_grade,
+                rr.officer_notes,
+                c.id AS certificate_id,
+                c.grade AS original_grade,
+                c.inspector_name,
+                c.sample_size,
+                c.defect_summary,
+                c.procurement_centre,
+                i.variety,
+                i.location,
+                i.created_at AS inspection_date
+            FROM review_requests rr
+            JOIN inspections i ON rr.inspection_id = i.id
+            LEFT JOIN certificates c ON c.inspection_id = i.id
+            WHERE i.user_id = ?
+            ORDER BY rr.created_at DESC
+            """,
+            (user_id,),
+        ).fetchall()
+        return [
+            {
+                "id": r["id"],
+                "inspectionId": r["inspection_id"],
+                "certificateId": r["certificate_id"],
+                "farmerName": r["farmer_name"],
+                "phoneNumber": r["phone_number"],
+                "reasonCategory": r["reason_category"],
+                "comments": r["comments"],
+                "status": r["status"] or "PENDING",
+                "createdAt": r["created_at"],
+                "inReviewAt": r["in_review_at"],
+                "completedAt": r["completed_at"],
+                "completedBy": r["completed_by"],
+                "finding": r["finding"],
+                "explanation": r["explanation"],
+                "evidenceReviewed": _safe_json_loads(r["evidence_reviewed"]) if r["evidence_reviewed"] else None,
+                "reAuditGrade": r["re_audit_grade"],
+                "originalGrade": r["original_grade"],
+                "inspectionDate": r["inspection_date"],
+                "variety": r["variety"],
+                "location": r["location"],
+                "sampleSize": r["sample_size"],
+                "defectSummary": r["defect_summary"],
+                "inspectorName": r["inspector_name"],
+                "procurementCentre": r["procurement_centre"] or r["location"],
+            }
+            for r in rows
+        ]
+
+
+def get_officer_re_audit_request(request_id: str, user_id: str) -> dict[str, Any] | None:
+    init_db()
+    with _get_connection() as conn:
+        r = conn.execute(
+            """
+            SELECT
+                rr.id,
+                rr.inspection_id,
+                rr.farmer_name,
+                rr.phone_number,
+                rr.reason_category,
+                rr.comments,
+                rr.status,
+                rr.created_at,
+                rr.in_review_at,
+                rr.completed_at,
+                rr.completed_by,
+                rr.finding,
+                rr.explanation,
+                rr.evidence_reviewed,
+                rr.re_audit_grade,
+                rr.officer_notes,
+                c.id AS certificate_id,
+                c.grade AS original_grade,
+                c.inspector_name,
+                c.sample_size,
+                c.defect_summary,
+                c.procurement_centre,
+                i.variety,
+                i.location,
+                i.created_at AS inspection_date
+            FROM review_requests rr
+            JOIN inspections i ON rr.inspection_id = i.id
+            LEFT JOIN certificates c ON c.inspection_id = i.id
+            WHERE rr.id = ? AND i.user_id = ?
+            """,
+            (request_id, user_id),
+        ).fetchone()
+        if not r:
+            return None
+        return {
+            "id": r["id"],
+            "inspectionId": r["inspection_id"],
+            "certificateId": r["certificate_id"],
+            "farmerName": r["farmer_name"],
+            "phoneNumber": r["phone_number"],
+            "reasonCategory": r["reason_category"],
+            "comments": r["comments"],
+            "status": r["status"] or "PENDING",
+            "createdAt": r["created_at"],
+            "inReviewAt": r["in_review_at"],
+            "completedAt": r["completed_at"],
+            "completedBy": r["completed_by"],
+            "finding": r["finding"],
+            "explanation": r["explanation"],
+            "evidenceReviewed": _safe_json_loads(r["evidence_reviewed"]) if r["evidence_reviewed"] else None,
+            "reAuditGrade": r["re_audit_grade"],
+            "originalGrade": r["original_grade"],
+            "inspectionDate": r["inspection_date"],
+            "variety": r["variety"],
+            "location": r["location"],
+            "sampleSize": r["sample_size"],
+            "defectSummary": r["defect_summary"],
+            "inspectorName": r["inspector_name"],
+            "procurementCentre": r["procurement_centre"] or r["location"],
+        }
+
+
+def update_officer_re_audit_status(
+    request_id: str,
+    user_id: str,
+    status: str,
+    notes: str | None = None,
+) -> dict[str, Any] | None:
+    init_db()
+    from app.store import utc_now_iso
+    now = utc_now_iso()
+    with _get_connection() as conn:
+        check = conn.execute(
+            """
+            SELECT rr.id, rr.inspection_id, rr.in_review_at FROM review_requests rr
+            JOIN inspections i ON rr.inspection_id = i.id
+            WHERE rr.id = ? AND i.user_id = ?
+            """,
+            (request_id, user_id),
+        ).fetchone()
+        if not check:
+            return None
+        clean_status = status.strip().upper()
+        if clean_status == "IN_REVIEW":
+            in_review_time = check["in_review_at"] or now
+            conn.execute(
+                """
+                UPDATE review_requests
+                SET status = ?, in_review_at = COALESCE(in_review_at, ?), officer_notes = COALESCE(?, officer_notes)
+                WHERE id = ?
+                """,
+                (clean_status, in_review_time, notes, request_id),
+            )
+        else:
+            conn.execute(
+                """
+                UPDATE review_requests
+                SET status = ?, officer_notes = COALESCE(?, officer_notes)
+                WHERE id = ?
+                """,
+                (clean_status, notes, request_id),
+            )
+    return get_officer_re_audit_request(request_id, user_id)
+
+
+def complete_officer_re_audit(
+    request_id: str,
+    user_id: str,
+    finding: str,
+    explanation: str,
+    evidence_reviewed: list[str],
+    re_audit_grade: str | None = None,
+    notes: str | None = None,
+) -> dict[str, Any] | None:
+    init_db()
+    from app.store import utc_now_iso
+    now = utc_now_iso()
+    with _get_connection() as conn:
+        check = conn.execute(
+            """
+            SELECT rr.id, rr.inspection_id, u.name as officer_name, c.id as cert_id, c.audit_timeline
+            FROM review_requests rr
+            JOIN inspections i ON rr.inspection_id = i.id
+            LEFT JOIN users u ON u.id = i.user_id
+            LEFT JOIN certificates c ON c.inspection_id = i.id
+            WHERE rr.id = ? AND i.user_id = ?
+            """,
+            (request_id, user_id),
+        ).fetchone()
+        if not check:
+            return None
+
+        officer_name = check["officer_name"] or "Authorized Officer"
+        evidence_json = json.dumps(evidence_reviewed)
+
+        conn.execute(
+            """
+            UPDATE review_requests
+            SET status = 'COMPLETED',
+                completed_at = ?,
+                completed_by = ?,
+                finding = ?,
+                explanation = ?,
+                evidence_reviewed = ?,
+                re_audit_grade = ?,
+                officer_notes = COALESCE(?, officer_notes)
+            WHERE id = ?
+            """,
+            (
+                now,
+                officer_name,
+                finding.strip(),
+                explanation.strip(),
+                evidence_json,
+                re_audit_grade,
+                notes,
+                request_id,
+            ),
+        )
+
+        # Update certificate audit timeline with verified re-audit event
+        if check["cert_id"] and check["audit_timeline"]:
+            timeline = _safe_json_loads(check["audit_timeline"]) or []
+            timeline.append({
+                "time": now,
+                "event": f"Re-Audit Determination Finalized: {finding.strip()} (Officer: {officer_name})",
+            })
+            conn.execute(
+                "UPDATE certificates SET audit_timeline = ? WHERE id = ?",
+                (json.dumps(timeline), check["cert_id"]),
+            )
+
+    return get_officer_re_audit_request(request_id, user_id)
+
+
+def track_review_request(request_id: str, phone_number: str) -> dict[str, Any] | None:
+    init_db()
+    clean_req_id = request_id.strip()
+    clean_phone = phone_number.strip()
+    import re
+    # Extract digits for comparison
+    digits_input = re.sub(r"\D", "", clean_phone)
+    if len(digits_input) > 10:
+        digits_input = digits_input[-10:]
+
+    with _get_connection() as conn:
+        r = conn.execute(
+            """
+            SELECT
+                rr.id,
+                rr.inspection_id,
+                rr.farmer_name,
+                rr.phone_number,
+                rr.reason_category,
+                rr.comments,
+                rr.status,
+                rr.created_at,
+                rr.in_review_at,
+                rr.completed_at,
+                rr.completed_by,
+                rr.finding,
+                rr.explanation,
+                rr.evidence_reviewed,
+                rr.re_audit_grade,
+                c.id AS certificate_id,
+                c.grade AS original_grade,
+                c.inspector_name,
+                c.sample_size,
+                c.procurement_centre,
+                i.variety,
+                i.location,
+                i.created_at AS inspection_date
+            FROM review_requests rr
+            JOIN inspections i ON rr.inspection_id = i.id
+            LEFT JOIN certificates c ON c.inspection_id = i.id
+            WHERE rr.id = ?
+            """,
+            (clean_req_id,),
+        ).fetchone()
+
+        if not r:
+            return None
+
+        # Verify phone number match
+        stored_phone = r["phone_number"] or ""
+        digits_stored = re.sub(r"\D", "", stored_phone)
+        if len(digits_stored) > 10:
+            digits_stored = digits_stored[-10:]
+
+        if not digits_input or (digits_input != digits_stored and clean_phone != stored_phone):
+            return None  # Phone mismatch -> 404 security rejection
+
+        evidence_list = _safe_json_loads(r["evidence_reviewed"]) if r["evidence_reviewed"] else None
+
+        return {
+            "id": r["id"],
+            "certificateId": r["certificate_id"],
+            "inspectionId": r["inspection_id"],
+            "farmerName": r["farmer_name"],
+            "phoneNumber": r["phone_number"],
+            "reasonCategory": r["reason_category"],
+            "comments": r["comments"],
+            "status": r["status"] or "PENDING",
+            "createdAt": r["created_at"],
+            "inReviewAt": r["in_review_at"],
+            "completedAt": r["completed_at"],
+            "originalGrade": r["original_grade"],
+            "originalInspectionDate": r["inspection_date"],
+            "procurementCentre": r["procurement_centre"] or r["location"],
+            "variety": r["variety"],
+            "sampleSize": r["sample_size"],
+            "evidenceReviewed": evidence_list,
+            "finding": r["finding"],
+            "explanation": r["explanation"],
+            "reAuditGrade": r["re_audit_grade"],
+            "officerName": r["completed_by"] or r["inspector_name"] or "Authorized Mandi Officer",
+        }

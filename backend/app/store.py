@@ -757,3 +757,48 @@ def get_review_requests(inspection_id: str) -> list[dict[str, Any]]:
 
 
 save_review_approval = save_review_and_certificate
+
+
+def update_user_profile(user_id: str, name: str) -> dict[str, Any] | None:
+    return local_store.update_user_profile(user_id, name)
+
+
+def list_officer_re_audit_requests(user_id: str) -> list[dict[str, Any]]:
+    return local_store.list_officer_re_audit_requests(user_id)
+
+
+def get_officer_re_audit_request(request_id: str, user_id: str) -> dict[str, Any] | None:
+    return local_store.get_officer_re_audit_request(request_id, user_id)
+
+
+def update_officer_re_audit_status(
+    request_id: str,
+    user_id: str,
+    status: str,
+    notes: str | None = None,
+) -> dict[str, Any] | None:
+    return local_store.update_officer_re_audit_status(request_id, user_id, status, notes)
+
+
+def complete_officer_re_audit(
+    request_id: str,
+    user_id: str,
+    finding: str,
+    explanation: str,
+    evidence_reviewed: list[str],
+    re_audit_grade: str | None = None,
+    notes: str | None = None,
+) -> dict[str, Any] | None:
+    return local_store.complete_officer_re_audit(
+        request_id=request_id,
+        user_id=user_id,
+        finding=finding,
+        explanation=explanation,
+        evidence_reviewed=evidence_reviewed,
+        re_audit_grade=re_audit_grade,
+        notes=notes,
+    )
+
+
+def track_review_request(request_id: str, phone_number: str) -> dict[str, Any] | None:
+    return local_store.track_review_request(request_id, phone_number)

@@ -140,3 +140,29 @@ def test_password_reset_flow():
         },
     )
     assert login_new.status_code == 200
+
+
+def test_profile_update_and_flexible_cert_lookup():
+    from uuid import uuid4
+    email = f"officer.update.{uuid4().hex[:8]}@apmc.gov.in"
+    res = client.post(
+        "/api/v1/auth/signup",
+        json={"email": email, "password": "Secret123!", "name": "Initial Officer"},
+    )
+    assert res.status_code in (200, 201)
+    token = res.json()["accessToken"]
+
+    patch_res = client.patch(
+        "/api/v1/auth/me",
+        json={"name": "Updated Officer Name"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert patch_res.status_code == 200
+    assert patch_res.json()["name"] == "Updated Officer Name"
+
+    me_res = client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert me_res.status_code == 200
+    assert me_res.json()["name"] == "Updated Officer Name"

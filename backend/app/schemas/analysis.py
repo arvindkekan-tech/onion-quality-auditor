@@ -141,7 +141,7 @@ class RecalculateResponse(BaseModel):
 
 class ReviewRequestInput(BaseModel):
     farmerName: str
-    phoneNumber: str | None = None
+    phoneNumber: str
     reasonCategory: str
     comments: str | None = None
 
@@ -149,11 +149,81 @@ class ReviewRequestInput(BaseModel):
 class ReviewRequestResponse(BaseModel):
     id: str
     inspectionId: str
+    certificateId: str | None = None
     farmerName: str
     reasonCategory: str
     status: str
     createdAt: str
     message: str | None = None
+
+
+class ReAuditRequestDetail(BaseModel):
+    id: str
+    inspectionId: str
+    certificateId: str | None = None
+    farmerName: str
+    phoneNumber: str | None = None
+    reasonCategory: str
+    comments: str | None = None
+    status: str = "PENDING"
+    createdAt: str
+    inReviewAt: str | None = None
+    completedAt: str | None = None
+    completedBy: str | None = None
+    finding: str | None = None
+    explanation: str | None = None
+    evidenceReviewed: list[str] | None = None
+    reAuditGrade: str | None = None
+    originalGrade: str | None = None
+    inspectionDate: str | None = None
+    variety: str | None = None
+    location: str | None = None
+    sampleSize: int | None = None
+    defectSummary: str | None = None
+    inspectorName: str | None = None
+    procurementCentre: str | None = None
+
+
+class UpdateReAuditStatusInput(BaseModel):
+    status: str
+    notes: str | None = None
+
+
+class CompleteReAuditInput(BaseModel):
+    finding: str
+    explanation: str
+    evidenceReviewed: list[str]
+    reAuditGrade: str | None = None
+    notes: str | None = None
+
+
+class TrackReAuditInput(BaseModel):
+    requestId: str
+    phoneNumber: str
+
+
+class ReAuditTrackingResponse(BaseModel):
+    id: str
+    certificateId: str | None = None
+    inspectionId: str
+    farmerName: str
+    phoneNumber: str
+    reasonCategory: str
+    comments: str | None = None
+    status: str
+    createdAt: str
+    inReviewAt: str | None = None
+    completedAt: str | None = None
+    originalGrade: str | None = None
+    originalInspectionDate: str | None = None
+    procurementCentre: str | None = None
+    variety: str | None = None
+    sampleSize: int | None = None
+    evidenceReviewed: list[str] | None = None
+    finding: str | None = None
+    explanation: str | None = None
+    reAuditGrade: str | None = None
+    officerName: str | None = None
 
 
 class AdaptiveInsight(BaseModel):

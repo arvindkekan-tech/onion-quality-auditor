@@ -22,6 +22,7 @@ from app.schemas.auth import (
     TokenResponse,
     UserLogin,
     UserProfile,
+    UserUpdate,
     UserSignUp,
 )
 
@@ -100,11 +101,35 @@ def login(data: UserLogin) -> TokenResponse:
 
 @router.get("/me", response_model=UserProfile)
 def get_current_user_profile(user: AuthenticatedUser = Depends(get_current_user)) -> UserProfile:
+    user_data = store.get_user_by_id(user.id)
+    if user_data:
+        return UserProfile(
+            id=user_data["id"],
+            email=user_data["email"],
+            name=user_data["name"],
+            role=user_data["role"],
+        )
     return UserProfile(
         id=user.id,
         email=user.email,
         name=user.name,
         role=user.role,
+    )
+
+
+@router.patch("/me", response_model=UserProfile)
+def update_current_user_profile(
+    data: UserUpdate,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> UserProfile:
+    updated = store.update_user_profile(user.id, name=data.name)
+    if not updated:
+        raise HTTPException(status_code=404, detail="User not found")
+    return UserProfile(
+        id=updated["id"],
+        email=updated["email"],
+        name=updated["name"],
+        role=updated["role"],
     )
 
 
