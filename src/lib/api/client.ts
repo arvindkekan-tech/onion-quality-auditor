@@ -55,19 +55,45 @@ async function request<T>(
     // Ignore
   }
 
+  if (body instanceof FormData) {
+    return new Promise<T>((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open(options.method || 'POST', `${apiBaseUrl}${path}`)
+      for (const [k, v] of Object.entries(authHeaders)) {
+        xhr.setRequestHeader(k, v)
+      }
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const json = xhr.responseText ? JSON.parse(xhr.responseText) : undefined
+            resolve(schema ? schema.parse(json) : (json as T))
+          } catch (e: any) {
+            reject(new ApiError(e.message || 'Invalid response', xhr.status))
+          }
+        } else {
+          let errMsg = `Upload failed with status ${xhr.status}`
+          try {
+            const errJson = JSON.parse(xhr.responseText)
+            if (errJson && errJson.message) errMsg = errJson.message
+          } catch {
+            // ignore
+          }
+          reject(new ApiError(errMsg, xhr.status))
+        }
+      }
+      xhr.onerror = () => reject(new ApiError('Network error during upload', 0))
+      xhr.send(body)
+    })
+  }
+
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...rest,
     headers: {
-      ...(body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
+      'Content-Type': 'application/json',
       ...authHeaders,
       ...headers,
     },
-    body:
-      body instanceof FormData
-        ? body
-        : body !== undefined
-          ? JSON.stringify(body)
-          : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
   })
 
   return parseResponse(response, schema)
