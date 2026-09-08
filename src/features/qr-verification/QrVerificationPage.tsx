@@ -100,6 +100,18 @@ export function QrVerificationPage() {
           <p className="text-sm text-muted-foreground">Verifying certificate…</p>
         ) : null}
 
+        {verificationQuery.isError ? (
+          <div className="flex flex-col items-center rounded-2xl border border-destructive/30 bg-destructive/5 p-6 text-center shadow-soft">
+            <XCircle className="size-12 text-destructive" aria-hidden />
+            <h2 className="mt-3 text-lg font-semibold text-destructive">
+              Certificate Invalid or Not Found
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              The certificate QR token does not exist in the official APMC verification registry, or has expired.
+            </p>
+          </div>
+        ) : null}
+
         {verification ? (
           <>
             <div

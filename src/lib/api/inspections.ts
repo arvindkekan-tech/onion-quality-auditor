@@ -52,8 +52,12 @@ export async function uploadImage(
 ): Promise<InspectionImage> {
   if (useMockApi) return mock.mockUploadImage(inspectionId, file)
 
+  const buffer = await file.arrayBuffer()
+  const inMemoryBlob = new Blob([new Uint8Array(buffer)], {
+    type: file.type || 'image/jpeg',
+  })
   const formData = new FormData()
-  formData.append('file', file)
+  formData.append('file', inMemoryBlob, file.name || 'sample_onion_tray.jpg')
   return apiClient.post(
     `/inspections/${inspectionId}/images`,
     formData,
