@@ -19,6 +19,7 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null)
 
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/'
+  const stateMessage = (location.state as { message?: string })?.message
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -81,6 +82,13 @@ export function LoginPage() {
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">ONIVIS Inspector Portal</h1>
           <p className="text-xs text-slate-500 mt-1">Government & APMC Mandi Quality Assurance</p>
         </div>
+
+        {stateMessage && !error && (
+          <div className="mb-4 flex items-start gap-2 rounded-lg bg-blue-50 p-3 text-xs text-blue-800 border border-blue-200">
+            <ShieldCheck className="size-4 shrink-0 mt-0.5 text-blue-600" />
+            <span>{stateMessage}</span>
+          </div>
+        )}
 
         {error && (
           <div className="mb-4 flex items-start gap-2 rounded-lg bg-red-50 p-3 text-xs text-red-700 border border-red-200">

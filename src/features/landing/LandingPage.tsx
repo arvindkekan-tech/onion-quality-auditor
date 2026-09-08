@@ -67,17 +67,12 @@ export function LandingPage() {
             Eliminate subjective manual grading. ONIVIS combines multi-tray computer vision with real YOLO models, optical defect detection, physical size estimation, and dual-track human review to issue tamper-proof digital certificates.
           </p>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+          <div className="flex items-center justify-center">
             <Link to="/inspection/new" className="w-full sm:w-auto">
-              <PrimaryButton fullWidth className="min-w-48 h-12 text-sm">
+              <PrimaryButton fullWidth className="min-w-56 h-12 text-sm font-semibold shadow-md">
                 Start New Inspection
                 <ArrowRight className="ml-2 size-4" />
               </PrimaryButton>
-            </Link>
-            <Link to="/login" className="w-full sm:w-auto">
-              <SecondaryButton fullWidth className="min-w-40 h-12 text-sm">
-                Inspector Login
-              </SecondaryButton>
             </Link>
           </div>
         </section>

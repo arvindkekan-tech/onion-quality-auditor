@@ -22,7 +22,19 @@ export function ProtectedRoute() {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/welcome" state={{ from: location }} replace />
+    if (location.pathname === '/' || location.pathname === '/welcome') {
+      return <Navigate to="/welcome" replace />
+    }
+    return (
+      <Navigate
+        to="/login"
+        state={{
+          from: location,
+          message: 'Officer authentication is required to access official APMC mandi records and reviews.',
+        }}
+        replace
+      />
+    )
   }
 
   return <Outlet />

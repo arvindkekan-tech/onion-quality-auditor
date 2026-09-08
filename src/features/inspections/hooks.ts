@@ -84,11 +84,13 @@ export function useAnalysisStatus(inspectionId: string, enabled = true) {
     queryKey: inspectionKeys.analysis(inspectionId),
     queryFn: () => getAnalysisStatus(inspectionId),
     enabled: Boolean(inspectionId) && enabled,
+    retry: 15,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 5000),
     refetchInterval: (query) =>
       query.state.data?.status === 'completed' ||
       query.state.data?.status === 'failed'
         ? false
-        : 1500,
+        : 2500,
   })
 }
 

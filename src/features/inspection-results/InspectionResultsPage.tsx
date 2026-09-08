@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { AlertCircle, AlertTriangle, ArrowRight, Ruler } from 'lucide-react'
+import { AlertCircle, AlertTriangle, ArrowRight, Ruler, ShieldCheck } from 'lucide-react'
 
 import { InspectionStepLayout } from '@/components/layout/InspectionStepLayout'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -8,6 +8,7 @@ import {
   AlertBanner,
   PrimaryButton,
   ResultCard,
+  SecondaryButton,
   StandardsMatrix,
   StatusBadge,
   WhyThisGradeCard,
@@ -19,6 +20,7 @@ import {
 } from '@/lib/demo-data'
 import { ROUTES } from '@/lib/constants'
 import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/stores/authStore'
 import { useInspectionDraftStore } from '@/stores/inspectionDraftStore'
 
 export function InspectionResultsPage() {
@@ -27,6 +29,7 @@ export function InspectionResultsPage() {
   const resultsQuery = useInspectionResults(id)
   const previewUrl = useInspectionDraftStore((s) => s.previewUrl)
   const results = resultsQuery.data
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const [selectedImageIndex, setSelectedImageIndex] = useState(0)
 
   const hasMultiTray =
@@ -379,13 +382,58 @@ export function InspectionResultsPage() {
             </AlertBanner>
           ) : null}
 
-          <PrimaryButton
-            fullWidth
-            disabled={!results}
-            onClick={() => navigate(ROUTES.humanReview(id))}
-          >
-            Continue to Human Review
-          </PrimaryButton>
+          {isAuthenticated ? (
+            <div className="space-y-2 pt-2">
+              <PrimaryButton
+                fullWidth
+                disabled={!results}
+                onClick={() => navigate(ROUTES.humanReview(id))}
+              >
+                Continue to Official Human Review
+              </PrimaryButton>
+              <SecondaryButton
+                fullWidth
+                onClick={() => navigate(ROUTES.newInspection)}
+              >
+                Start Another Inspection
+              </SecondaryButton>
+            </div>
+          ) : (
+            <div className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-4 pt-3">
+              <div className="flex items-start gap-2.5">
+                <ShieldCheck className="size-5 text-primary shrink-0 mt-0.5" />
+                <div className="text-xs text-slate-700">
+                  <p className="font-bold text-slate-900 mb-1">Official Mandi Certification</p>
+                  <p>
+                    AI quality assessment complete. To apply official overrides, confirm physical grading, and issue an official APMC quality certificate, sign in with an authorized officer account.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2 pt-1">
+                <PrimaryButton
+                  fullWidth
+                  disabled={!results}
+                  onClick={() =>
+                    navigate('/login', {
+                      state: {
+                        from: { pathname: ROUTES.humanReview(id) },
+                        message:
+                          'Official APMC Officer sign-in is required to review lots and issue certified quality certificates.',
+                      },
+                    })
+                  }
+                >
+                  Officer Sign In for Review & Certificate
+                </PrimaryButton>
+                <SecondaryButton
+                  fullWidth
+                  onClick={() => navigate(ROUTES.newInspection)}
+                >
+                  Start Another Quick Inspection
+                </SecondaryButton>
+              </div>
+            </div>
+          )}
         </div>
       </InspectionStepLayout>
     </>

@@ -32,7 +32,19 @@ export const router = createBrowserRouter([
   { path: ROUTES.resetPassword, element: <ResetPasswordPage /> },
   { path: '/verify/:token', element: <QrVerificationPage /> },
 
-  // Protected Routes (AppShell)
+  // Public Inspection Flow (Accessible via Quick Start / Start New Inspection without login)
+  {
+    element: <AppShell />,
+    children: [
+      { path: ROUTES.newInspection, element: <NewInspectionPage /> },
+      { path: '/inspection/:id/capture', element: <ImageCapturePage /> },
+      { path: '/inspection/:id/quality', element: <ImageQualityCheckPage /> },
+      { path: '/inspection/:id/analysis', element: <AiAnalysisPage /> },
+      { path: '/inspection/:id/results', element: <InspectionResultsPage /> },
+    ],
+  },
+
+  // Protected Routes (AppShell + ProtectedRoute for authenticated APMC officers)
   {
     element: <ProtectedRoute />,
     children: [
@@ -41,13 +53,8 @@ export const router = createBrowserRouter([
         children: [
           { path: ROUTES.dashboard, element: <DashboardPage /> },
           { path: ROUTES.inspections, element: <InspectionsPage /> },
-          { path: ROUTES.newInspection, element: <NewInspectionPage /> },
           { path: ROUTES.analytics, element: <AnalyticsPage /> },
           { path: ROUTES.profile, element: <ProfilePage /> },
-          { path: '/inspection/:id/capture', element: <ImageCapturePage /> },
-          { path: '/inspection/:id/quality', element: <ImageQualityCheckPage /> },
-          { path: '/inspection/:id/analysis', element: <AiAnalysisPage /> },
-          { path: '/inspection/:id/results', element: <InspectionResultsPage /> },
           { path: '/inspection/:id/review', element: <HumanReviewPage /> },
           { path: '/certificate/:id', element: <QualityCertificatePage /> },
         ],
