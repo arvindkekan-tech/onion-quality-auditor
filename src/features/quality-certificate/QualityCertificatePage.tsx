@@ -102,6 +102,17 @@ export function QualityCertificatePage() {
       ? String(sproutedCount)
       : 'Not available'
 
+  const hasDefectNumbers =
+    (rottenDamagedCount !== undefined && rottenDamagedCount !== null) ||
+    (sproutedCount !== undefined && sproutedCount !== null)
+
+  const totalDefects = hasDefectNumbers
+    ? (rottenDamagedCount ?? 0) + (sproutedCount ?? 0)
+    : undefined
+
+  const defectsDisplay =
+    totalDefects !== undefined ? String(totalDefects) : 'Not available'
+
   return (
     <>
       <div className="print:hidden">
@@ -188,58 +199,72 @@ export function QualityCertificatePage() {
                 </div>
               ) : null}
 
-              {/* Quality Composition (SIH PS Compliance) */}
-              <div className="space-y-2.5 rounded-xl border border-border bg-surface-muted p-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-foreground">
-                    Quality Composition
-                  </span>
-                  <span className="rounded-full border border-primary/20 bg-primary/5 px-2 py-0.5 text-[10px] font-medium text-primary">
-                    SIH PS Breakdown
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
-                  <div className="rounded-lg border border-border bg-card p-2">
-                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+              {/* Quality Composition */}
+              <div className="space-y-2 rounded-xl border border-border bg-surface-muted p-3">
+                <span className="text-xs font-semibold text-foreground">
+                  Quality Composition
+                </span>
+                <div className="grid grid-cols-2 gap-2 text-center">
+                  <div className="rounded-lg border border-border bg-card p-2.5 flex flex-col justify-center items-center">
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
                       Grade A
                     </span>
-                    <p className="text-sm font-extrabold text-emerald-700 mt-0.5">
+                    <p className="text-base font-extrabold text-emerald-700 dark:text-emerald-400 mt-0.5">
                       {gradeAPct}
                     </p>
                   </div>
-                  <div className="rounded-lg border border-border bg-card p-2">
-                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                  <div className="rounded-lg border border-border bg-card p-2.5 flex flex-col justify-center items-center">
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
                       URS
                     </span>
-                    <p className="text-sm font-extrabold text-amber-700 mt-0.5">
+                    <p className="text-base font-extrabold text-amber-700 dark:text-amber-400 mt-0.5">
                       {ursPct}
                     </p>
                   </div>
-                  <div className="rounded-lg border border-border bg-card p-2">
-                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                  <div className="rounded-lg border border-border bg-card p-2.5 flex flex-col justify-center items-center">
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
                       Undersized
                     </span>
-                    <p className="text-sm font-bold text-foreground mt-0.5">
+                    <p
+                      className={`mt-0.5 font-bold text-foreground ${
+                        undersizedDisplay === 'Not available'
+                          ? 'text-xs text-muted-foreground font-medium'
+                          : 'text-base'
+                      }`}
+                    >
                       {undersizedDisplay}
                     </p>
                   </div>
-                  <div className="rounded-lg border border-border bg-card p-2">
-                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                      Rotten / Damaged
+                  <div className="rounded-lg border border-border bg-card p-2.5 flex flex-col justify-center items-center">
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                      Defects
                     </span>
-                    <p className="text-sm font-bold text-rose-700 mt-0.5">
-                      {rottenDamagedDisplay}
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-border bg-card p-2 col-span-2 sm:col-span-1">
-                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                      Sprouted
-                    </span>
-                    <p className="text-sm font-bold text-amber-600 mt-0.5">
-                      {sproutedDisplay}
+                    <p
+                      className={`mt-0.5 font-bold text-foreground ${
+                        defectsDisplay === 'Not available'
+                          ? 'text-xs text-muted-foreground font-medium'
+                          : 'text-base'
+                      }`}
+                    >
+                      {defectsDisplay}
                     </p>
                   </div>
                 </div>
+
+                {(rottenDamagedDisplay !== 'Not available' || sproutedDisplay !== 'Not available') ? (
+                  <div className="flex flex-wrap items-center justify-around gap-2 rounded-lg border border-border/70 bg-card px-2.5 py-1.5 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1.5">
+                      <span className="inline-block size-1.5 rounded-full bg-rose-500" aria-hidden />
+                      <span>Rotten / Damaged:</span>
+                      <span className="font-semibold text-foreground">{rottenDamagedDisplay}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="inline-block size-1.5 rounded-full bg-amber-500" aria-hidden />
+                      <span>Sprouted:</span>
+                      <span className="font-semibold text-foreground">{sproutedDisplay}</span>
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
               {/* Dual Assessment Track */}
