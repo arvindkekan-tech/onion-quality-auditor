@@ -271,6 +271,18 @@ export function LandingPage() {
                   </p>
                 </div>
               </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white p-4.5 shadow-2xs flex items-start gap-3">
+                <div className="size-9 rounded-lg bg-teal-50 text-teal-700 flex items-center justify-center shrink-0 mt-0.5">
+                  <Scale className="size-4.5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Independent Re-audit</h3>
+                  <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                    Farmers can request a review of a certificate and track the response using a unique request reference.
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         </section>
