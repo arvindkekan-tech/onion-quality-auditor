@@ -12,7 +12,7 @@ for _cand in _env_candidates:
             _line = _line.strip()
             if _line and not _line.startswith("#") and "=" in _line:
                 _k, _v = _line.split("=", 1)
-                os.environ.setdefault(_k.strip().lstrip("\ufeff"), _v.strip())
+                os.environ.setdefault(_k.strip().lstrip("\ufeff"), _v.strip().strip('"').strip("'"))
         break
 
 
