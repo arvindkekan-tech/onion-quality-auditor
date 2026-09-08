@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ONIVIS — Android App Download</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #059669;
+      --primary-hover: #047857;
+      --primary-light: #ecfdf5;
+      --bg: #0b1120;
+      --surface: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+    .card {
+      width: 100%;
+      max-width: 480px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 1.5rem;
+      padding: 2rem;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+      text-align: center;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: rgba(5, 150, 105, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(5, 150, 105, 0.3);
+      padding: 0.35rem 0.85rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      margin-bottom: 1.25rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .badge .dot {
+      width: 6px;
+      height: 6px;
+      background: #10b981;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
+    }
+    h1 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.85rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.5rem;
+      color: #ffffff;
+    }
+    p.subtitle {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      margin-bottom: 1.75rem;
+      line-height: 1.5;
+    }
+    .download-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      width: 100%;
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: #ffffff;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 1.05rem;
+      padding: 1rem 1.5rem;
+      border-radius: 1rem;
+      transition: all 0.2s ease;
+      box-shadow: 0 10px 25px -5px rgba(16, 185, 129, 0.4);
+      margin-bottom: 1.5rem;
+    }
+    .download-btn:hover {
+      background: linear-gradient(135deg, #059669 0%, #047857 100%);
+      transform: translateY(-2px);
+      box-shadow: 0 15px 30px -5px rgba(16, 185, 129, 0.5);
+    }
+    .download-btn:active {
+      transform: translateY(0);
+    }
+    .download-btn svg {
+      width: 22px;
+      height: 22px;
+    }
+    .details {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(51, 65, 85, 0.5);
+      border-radius: 1rem;
+      padding: 1.25rem;
+      text-align: left;
+      font-size: 0.85rem;
+      margin-bottom: 1.5rem;
+    }
+    .detail-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.4rem 0;
+      border-bottom: 1px solid rgba(51, 65, 85, 0.4);
+    }
+    .detail-row:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+    .detail-row:first-child {
+      padding-top: 0;
+    }
+    .detail-label {
+      color: var(--text-muted);
+    }
+    .detail-value {
+      font-family: monospace;
+      font-size: 0.8rem;
+      color: #e2e8f0;
+      font-weight: 500;
+    }
+    .hash-box {
+      margin-top: 0.5rem;
+      padding: 0.5rem;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 0.5rem;
+      font-family: monospace;
+      font-size: 0.7rem;
+      word-break: break-all;
+      color: #94a3b8;
+    }
+    .instructions {
+      text-align: left;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+      border-top: 1px solid var(--border);
+      padding-top: 1.25rem;
+    }
+    .instructions ol {
+      padding-left: 1.25rem;
+      margin-top: 0.5rem;
+    }
+    .direct-link {
+      margin-top: 1rem;
+      font-size: 0.8rem;
+      color: #38bdf8;
+      text-decoration: none;
+      display: inline-block;
+    }
+    .direct-link:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="badge">
+      <span class="dot"></span>
+      Production Build Verified
+    </div>
+    <h1>ONIVIS</h1>
+    <p class="subtitle">AI-Powered Onion Quality Inspection & Transparency Auditor</p>
+
+    <a href="app-debug.apk" download="app-debug.apk" class="download-btn" id="downloadBtn">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+      </svg>
+      Download ONIVIS APK (4.15 MB)
+    </a>
+
+    <div class="details">
+      <div class="detail-row">
+        <span class="detail-label">Package ID</span>
+        <span class="detail-value">com.onivis.app</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">Target OS</span>
+        <span class="detail-value">Android 7.0+ (API 24-36)</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">Backend API</span>
+        <span class="detail-value">onivis-api.onrender.com</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">File Size</span>
+        <span class="detail-value">4,349,069 bytes</span>
+      </div>
+      <div style="margin-top: 0.75rem;">
+        <span class="detail-label" style="font-size: 0.75rem;">SHA-256 Checksum</span>
+        <div class="hash-box">B71A7CC4DDAB42A575DB9A783BD78E868D5BAA08F83707FEF2872D8AD2275D98</div>
+      </div>
+    </div>
+
+    <div class="instructions">
+      <strong>Installation Instructions for Android:</strong>
+      <ol>
+        <li>Tap <strong>Download ONIVIS APK</strong> above.</li>
+        <li>If Android displays <em>"File might be harmful"</em>, tap <strong>Download anyway</strong> (standard notice for direct APK installs).</li>
+        <li>When download finishes, tap <strong>Open</strong> and proceed with installation.</li>
+      </ol>
+    </div>
+
+    <a href="app-debug.apk" class="direct-link">Direct APK Link</a>
+  </div>
+</body>
+</html>
