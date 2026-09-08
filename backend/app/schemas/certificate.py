@@ -6,6 +6,17 @@ class AuditEvent(BaseModel):
     time: str
 
 
+class QualityComposition(BaseModel):
+    model_config = ConfigDict(exclude_none=True)
+
+    totalOnions: int | None = None
+    gradeAPercent: float | None = None
+    ursPercent: float | None = None
+    undersizedCount: int | None = None
+    rottenDamagedCount: int | None = None
+    sproutedCount: int | None = None
+
+
 class Certificate(BaseModel):
     model_config = ConfigDict(exclude_none=True)
 
@@ -29,6 +40,7 @@ class Certificate(BaseModel):
     dualAssessment: dict[str, object] | None = None
     whyThisGrade: dict[str, object] | None = None
     standardsMatrix: list[dict[str, object]] | None = None
+    qualityComposition: QualityComposition | None = None
 
 
 class VerificationResult(BaseModel):
@@ -40,4 +52,5 @@ class VerificationResult(BaseModel):
     auditTimeline: list[AuditEvent] | None = None
     whyThisGrade: dict[str, object] | None = None
     standardsMatrix: list[dict[str, object]] | None = None
+    qualityComposition: QualityComposition | None = None
     farmerTransparency: dict[str, object] | None = None

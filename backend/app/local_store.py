@@ -616,6 +616,61 @@ def save_review_rejection(
         )
 
 
+def _attach_certificate_quality_composition(cert_dict: dict[str, Any]) -> dict[str, Any]:
+    insp_id = cert_dict.get("inspectionId")
+    insp = get_inspection(insp_id) if insp_id else None
+    insp_result = insp.result if (insp and isinstance(insp.result, dict)) else None
+
+    total_sample = cert_dict.get("sampleSize")
+    healthy_count = None
+    rotten_count = None
+    sprouted_count = None
+    undersized_count = None
+    grade_a_pct = None
+    urs_pct = None
+
+    dual = cert_dict.get("dualAssessment") or {}
+    track = dual.get("officer") or dual.get("ai") or {}
+    if track:
+        healthy_count = track.get("healthyCount")
+        rotten_count = track.get("rottenDamagedCount")
+        sprouted_count = track.get("sproutedCount")
+        if not total_sample:
+            total_sample = track.get("totalOnions")
+
+    if insp_result:
+        if healthy_count is None:
+            healthy_count = insp_result.get("healthyCount")
+        if rotten_count is None:
+            rotten_count = insp_result.get("rottenDamagedCount")
+        if sprouted_count is None:
+            sprouted_count = insp_result.get("sproutedCount")
+        if not total_sample:
+            total_sample = insp_result.get("totalOnions")
+
+        defects = insp_result.get("defects") or []
+        for d in defects:
+            if "undersized" in str(d.get("label", "")).lower():
+                undersized_count = d.get("count")
+                break
+
+    if total_sample and total_sample > 0:
+        if healthy_count is not None:
+            grade_a_pct = round((healthy_count / total_sample) * 100, 1)
+        if rotten_count is not None and sprouted_count is not None:
+            urs_pct = round(((rotten_count + sprouted_count) / total_sample) * 100, 1)
+
+    cert_dict["qualityComposition"] = {
+        "totalOnions": total_sample,
+        "gradeAPercent": grade_a_pct,
+        "ursPercent": urs_pct,
+        "undersizedCount": undersized_count,
+        "rottenDamagedCount": rotten_count,
+        "sproutedCount": sprouted_count,
+    }
+    return cert_dict
+
+
 def get_certificate(certificate_id: str) -> dict[str, Any] | None:
     init_db()
     with _get_connection() as conn:
@@ -624,7 +679,7 @@ def get_certificate(certificate_id: str) -> dict[str, Any] | None:
         ).fetchone()
         if not row:
             return None
-        return {
+        cert_data = {
             "id": row["id"],
             "inspectionId": row["inspection_id"],
             "grade": row["grade"],
@@ -644,6 +699,7 @@ def get_certificate(certificate_id: str) -> dict[str, Any] | None:
             "overrideCount": row["override_count"] if "override_count" in row.keys() else 0,
             "dualAssessment": _safe_json_loads(row["dual_assessment"]) if "dual_assessment" in row.keys() else None,
         }
+        return _attach_certificate_quality_composition(cert_data)
 
 
 def get_certificate_by_token(token: str) -> dict[str, Any] | None:
@@ -657,7 +713,7 @@ def get_certificate_by_token(token: str) -> dict[str, Any] | None:
         ).fetchone()
         if not row:
             return None
-        return {
+        cert_data = {
             "id": row["id"],
             "inspectionId": row["inspection_id"],
             "grade": row["grade"],
@@ -677,6 +733,7 @@ def get_certificate_by_token(token: str) -> dict[str, Any] | None:
             "overrideCount": row["override_count"] if "override_count" in row.keys() else 0,
             "dualAssessment": _safe_json_loads(row["dual_assessment"]) if "dual_assessment" in row.keys() else None,
         }
+        return _attach_certificate_quality_composition(cert_data)
 
 
 def save_onion_decisions(inspection_id: str, decisions: list[dict[str, Any]]) -> None:
