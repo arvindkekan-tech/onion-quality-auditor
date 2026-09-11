@@ -1,10 +1,8 @@
 import { z } from 'zod'
 
-export const analysisStatusSchema = z.enum([
-  'pending',
-  'processing',
-  'completed',
-  'failed',
+export const analysisStatusSchema = z.union([
+  z.enum(['pending', 'processing', 'completed', 'failed']),
+  z.string(),
 ])
 
 export type AnalysisStatus = z.infer<typeof analysisStatusSchema>

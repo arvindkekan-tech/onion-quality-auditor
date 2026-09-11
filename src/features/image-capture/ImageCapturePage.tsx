@@ -357,7 +357,6 @@ export function ImageCapturePage() {
                     type="file"
                     multiple
                     accept="image/*"
-                    capture="environment"
                     className="hidden"
                     onChange={handleFileChange}
                   />

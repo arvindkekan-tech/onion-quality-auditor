@@ -254,9 +254,18 @@ export function DashboardPage() {
           {historyQuery.isPending ? (
             <p className="text-xs text-muted-foreground">Loading inspections…</p>
           ) : historyQuery.isError ? (
-            <p className="text-xs text-destructive" role="alert">
-              Unable to load inspections right now. Check your connection.
-            </p>
+            <div className="flex items-center justify-between rounded-xl border border-destructive/20 bg-destructive/5 p-3 text-xs">
+              <p className="text-destructive" role="alert">
+                Unable to load inspections right now. Check your connection.
+              </p>
+              <button
+                type="button"
+                onClick={() => historyQuery.refetch()}
+                className="font-medium text-primary hover:underline ml-2 shrink-0"
+              >
+                Retry
+              </button>
+            </div>
           ) : inspections.length === 0 ? (
             <div className="flex flex-col items-center rounded-xl border border-dashed border-border bg-surface-muted/50 p-6 text-center">
               <ClipboardCheck className="size-8 text-muted-foreground/60 mb-2" />

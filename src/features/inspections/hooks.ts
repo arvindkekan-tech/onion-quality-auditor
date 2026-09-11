@@ -38,6 +38,8 @@ export function useInspectionHistory() {
   return useQuery({
     queryKey: inspectionKeys.history(),
     queryFn: getInspectionHistory,
+    retry: 4,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 5000),
   })
 }
 
@@ -93,7 +95,7 @@ export function useAnalysisStatus(inspectionId: string, enabled = true) {
     queryKey: inspectionKeys.analysis(inspectionId),
     queryFn: () => getAnalysisStatus(inspectionId),
     enabled: Boolean(inspectionId) && enabled,
-    retry: 5,
+    retry: 8,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 4000),
     refetchInterval: (query) =>
       query.state.data?.status === 'completed' ||

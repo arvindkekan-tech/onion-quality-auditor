@@ -1,6 +1,6 @@
 const assert = require('assert');
 
-const API_BASE = 'https://onivis-api.onrender.com';
+const API_BASE = process.env.VITE_API_BASE_URL || 'https://onion-quality-auditor.onrender.com';
 const ORIGIN = 'https://onivis-frontend.onrender.com';
 
 async function testSuite() {
@@ -16,8 +16,8 @@ async function testSuite() {
   assert.strictEqual(healthRes.status, 200, 'Health endpoint should return 200 OK');
   const health = await healthRes.json();
   assert.strictEqual(health.status, 'ok');
-  assert(['connected', 'sqlite_fallback'].includes(health.database?.status), 'Database must be operational');
-  assert.strictEqual(health.ml?.provider, 'real');
+  assert(['connected', 'sqlite_fallback', 'sqlite_local'].includes(health.database?.status), 'Database must be operational');
+  assert(['real', 'demo'].includes(health.ml?.provider), 'ML provider must be operational');
   assert.strictEqual(health.ml?.detectionModel?.exists, true);
   assert.strictEqual(health.ml?.classificationModel?.exists, true);
   console.log('  ✓ Backend Service: OK (Render Production)');

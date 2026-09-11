@@ -137,7 +137,7 @@ export function AiAnalysisPage() {
             </PrimaryButton>
           ) : null}
 
-          {!isComplete && (analysisStatus.isError || startAnalysis.isError) ? (
+          {!isComplete && !status && (analysisStatus.isError || startAnalysis.isError) ? (
             <p className="text-sm text-destructive" role="alert">
               Analysis status unavailable. Tap refresh to retry.
             </p>
@@ -147,10 +147,9 @@ export function AiAnalysisPage() {
             <button
               type="button"
               onClick={() => {
+                startAnalysis.reset()
                 analysisStatus.refetch()
-                if (!hasStarted.current || startAnalysis.isError) {
-                  startAnalysis.mutate()
-                }
+                startAnalysis.mutate()
               }}
               className="text-xs text-primary underline-offset-2 hover:underline"
             >

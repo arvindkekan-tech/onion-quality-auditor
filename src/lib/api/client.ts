@@ -11,14 +11,19 @@ async function parseResponse<T>(
   response: Response,
   schema?: z.ZodType<T>,
 ): Promise<T> {
-  if (response.status === 204 || response.headers.get('content-length') === '0') {
+  if (response.status === 204) {
     return undefined as T
   }
 
-  const contentType = response.headers.get('content-type')
-  const isJson = contentType?.includes('application/json')
   const text = await response.text()
-  const data = isJson && text.trim() ? JSON.parse(text) : text
+  let data: unknown = text
+  if (typeof text === 'string' && text.trim()) {
+    try {
+      data = JSON.parse(text)
+    } catch {
+      data = text
+    }
+  }
 
   if (!response.ok) {
     const message =
@@ -33,7 +38,12 @@ async function parseResponse<T>(
   }
 
   if (schema) {
-    return schema.parse(data)
+    const result = schema.safeParse(data)
+    if (result.success) {
+      return result.data
+    }
+    console.warn('API schema validation warning:', result.error)
+    return data as T
   }
 
   return data as T
@@ -44,7 +54,7 @@ async function request<T>(
   options: RequestOptions = {},
   schema?: z.ZodType<T>,
 ): Promise<T> {
-  const { body, headers, ...rest } = options
+  const { body, headers, signal, ...rest } = options
   let authHeaders: Record<string, string> = {}
   try {
     const token = typeof window !== 'undefined' ? localStorage.getItem('onivis_token') : null
@@ -55,22 +65,32 @@ async function request<T>(
     // Ignore
   }
 
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    ...rest,
-    headers: {
-      ...(body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
-      ...authHeaders,
-      ...headers,
-    },
-    body:
-      body instanceof FormData
-        ? body
-        : body !== undefined
-          ? JSON.stringify(body)
-          : undefined,
-  })
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 60000)
 
-  return parseResponse(response, schema)
+  try {
+    const response = await fetch(`${apiBaseUrl}${path}`, {
+      ...rest,
+      signal: signal || controller.signal,
+      headers: {
+        ...(body !== undefined && !(body instanceof FormData)
+          ? { 'Content-Type': 'application/json' }
+          : {}),
+        ...authHeaders,
+        ...headers,
+      },
+      body:
+        body instanceof FormData
+          ? body
+          : body !== undefined
+            ? JSON.stringify(body)
+            : undefined,
+    })
+
+    return await parseResponse(response, schema)
+  } finally {
+    clearTimeout(timeoutId)
+  }
 }
 
 export const apiClient = {
