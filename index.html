@@ -11,6 +11,17 @@
       rel="stylesheet"
     />
     <title>ONIVIS — AI-Assisted Onion Quality Inspection</title>
+    <script>
+      (function() {
+        var redirect = sessionStorage.getItem('onivis_spa_redirect');
+        if (redirect) {
+          sessionStorage.removeItem('onivis_spa_redirect');
+          if (redirect !== '/' && redirect !== window.location.pathname) {
+            window.history.replaceState(null, '', redirect);
+          }
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

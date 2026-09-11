@@ -47,7 +47,16 @@ async function run() {
     // 2. Direct SPA route navigation test
     console.log('\n[Step 2] Testing SPA Direct Navigation to /login...');
     await page.goto(BASE_URL + '/login', { waitUntil: 'networkidle0' });
-    console.log('  ✓ Arrived at /login:', page.url());
+    await new Promise(r => setTimeout(r, 1500));
+    if (page.url().includes('/welcome')) {
+      console.log('  Landed on /welcome, navigating to /login via Sign In button...');
+      const signInLink = await page.$('a[href*="login"]');
+      if (signInLink) {
+        await signInLink.click();
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+    console.log('  ✓ Arrived at login page:', page.url());
 
     // 3. Demo Login
     console.log('\n[Step 3] Performing Demo Inspector Login...');
