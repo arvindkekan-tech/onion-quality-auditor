@@ -4,7 +4,7 @@ const fs = require('fs');
 
 const CHROME_PATH = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const SAMPLE_IMAGE_PATH = path.resolve(__dirname, 'sample_onion_tray.jpg');
-const BASE_URL = 'http://localhost:4173';
+const BASE_URL = process.env.TARGET_URL || 'https://onivis-frontend.onrender.com';
 
 async function run() {
   console.log('================================================================');
